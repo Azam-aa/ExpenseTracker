@@ -20,12 +20,14 @@ import { Capacitor } from '@capacitor/core';
 interface ImageViewerProps {
   imageUrl: string;
   transaction: Transaction;
+  imageRecord?: ImageRecord | null;
   onClose: () => void;
 }
 
 export const ImageViewer: React.FC<ImageViewerProps> = ({
   imageUrl,
   transaction,
+  imageRecord,
   onClose
 }) => {
   const { updateTransaction, showToast } = useAppStore();
@@ -33,7 +35,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   const [showPicker, setShowPicker] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
 
-  const [record, setRecord] = useState<ImageRecord | null>(null);
+  const [record, setRecord] = useState<ImageRecord | null>(imageRecord || null);
   const [fullBlob, setFullBlob] = useState<Blob | null>(null);
   const [blobUrl, setBlobUrl] = useState<string>(imageUrl);
   const [excelRows, setExcelRows] = useState<any[][] | null>(null);

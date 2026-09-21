@@ -196,5 +196,49 @@ test.describe('Day to Day Expenses - Parity & End-to-End Test Suite', () => {
     // Verify toast feedback
     await expect(page.locator('text=Generating Account Statement (Excel)...')).toBeVisible();
   });
+
+  test('7. Universal Attachment (Photo & PDF) full save, view, and edit lifecycle', async ({ page }) => {
+    await page.goto('/');
+
+    // 1. Add transaction with photo
+    await page.click('button[aria-label="Add transaction"]');
+    await page.fill('input[placeholder="Amount"]', '850');
+    await page.fill('input[placeholder="Enter Text"]', 'Office Supplies Receipt');
+
+    const dummyPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64'
+    );
+
+    await page.click('text=Add Attachment (Photo, PDF, Excel)');
+    const fileInput = page.locator('input[data-testid="gallery-input"]');
+    await fileInput.setInputFiles({
+      name: 'office_receipt.png',
+      mimeType: 'image/png',
+      buffer: dummyPng
+    });
+
+    await expect(page.locator('text=Tap to view full screen')).toBeVisible({ timeout: 5000 });
+    await page.click('button[aria-label="Save transaction"]');
+
+    // 2. Verify on Daily screen
+    await expect(page.locator('text=Office Supplies Receipt')).toBeVisible({ timeout: 5000 });
+    const viewBtn = page.locator('button[aria-label="View attachment"]');
+    await expect(viewBtn).toBeVisible();
+
+    // 3. Open full screen viewer
+    await viewBtn.click();
+    await expect(page.locator('button[aria-label="Back"]')).toBeVisible({ timeout: 5000 });
+    await page.click('button[aria-label="Back"]');
+
+    // 4. Open edit sheet and verify preview card with Change & Remove buttons
+    await page.click('text=Office Supplies Receipt');
+    await expect(page.locator('text=Tap to view full screen')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=Change')).toBeVisible();
+    await expect(page.locator('text=Remove')).toBeVisible();
+
+    await page.click('button[aria-label="Save transaction"]');
+    await expect(viewBtn).toBeVisible({ timeout: 5000 });
+  });
 });
 

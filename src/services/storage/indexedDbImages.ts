@@ -86,3 +86,20 @@ export async function clearAllIdbImages(): Promise<void> {
   const db = await getDb();
   await db.clear(STORE_NAME);
 }
+
+export async function getAllImageRecordsFromIdb(): Promise<Record<string, ImageRecord>> {
+  try {
+    const db = await getDb();
+    const entries = (await db.getAll(STORE_NAME)) as ImageStoreEntry[];
+    const result: Record<string, ImageRecord> = {};
+    for (const entry of entries) {
+      if (entry && entry.id && entry.record) {
+        result[entry.id] = entry.record;
+      }
+    }
+    return result;
+  } catch (e) {
+    console.error('[IndexedDB] Failed to get all image records:', e);
+    return {};
+  }
+}

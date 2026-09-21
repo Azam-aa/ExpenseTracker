@@ -54,10 +54,12 @@ export const TxRow: React.FC<TxRowProps> = ({ transaction }) => {
     e.stopPropagation();
     if (transaction.imageId) {
       const url = await getImageFullUrl(transaction.imageId);
+      const { imageRecords } = useAppStore.getState();
+      const rec = imageRecords[transaction.imageId];
       if (url) {
-        openViewer(url, transaction);
+        openViewer(url, transaction, rec);
       } else if (thumbUrl) {
-        openViewer(thumbUrl, transaction);
+        openViewer(thumbUrl, transaction, rec);
       }
     }
   };
@@ -113,6 +115,31 @@ export const TxRow: React.FC<TxRowProps> = ({ transaction }) => {
             {transaction.description}
           </span>
         ) : null}
+        {transaction.imageId && (
+          <button
+            type="button"
+            onClick={handleAttachmentClick}
+            aria-label="View attachment"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              marginTop: '5px',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              backgroundColor: 'rgba(23, 162, 184, 0.15)',
+              border: '1px solid var(--color-primary)',
+              color: 'var(--color-primary)',
+              fontSize: '11px',
+              fontWeight: 600,
+              width: 'fit-content',
+              cursor: 'pointer'
+            }}
+          >
+            <MdAttachFile size={13} />
+            <span>View Attachment</span>
+          </button>
+        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -122,15 +149,15 @@ export const TxRow: React.FC<TxRowProps> = ({ transaction }) => {
             role="button"
             aria-label="View attached receipt image"
             style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '6px',
+              width: '38px',
+              height: '38px',
+              borderRadius: '8px',
               overflow: 'hidden',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid var(--color-primary)',
+              border: '1.5px solid var(--color-primary)',
               cursor: 'pointer',
               flexShrink: 0
             }}
@@ -142,7 +169,7 @@ export const TxRow: React.FC<TxRowProps> = ({ transaction }) => {
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             ) : (
-              <MdAttachFile size={18} color="var(--color-primary)" />
+              <MdAttachFile size={20} color="var(--color-primary)" />
             )}
           </div>
         )}

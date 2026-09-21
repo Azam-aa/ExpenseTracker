@@ -180,6 +180,7 @@ export const App: React.FC = () => {
         <ImageViewer
           imageUrl={viewerImage.url}
           transaction={viewerImage.transaction}
+          imageRecord={viewerImage.imageRecord}
           onClose={closeViewer}
         />
       )}

@@ -24,7 +24,7 @@ import { DEFAULT_CATEGORIES } from '../models/defaultCategories';
 import { getTodayDateString } from '../utils/dates';
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { clearAllIdbImages } from '../services/storage/indexedDbImages';
+import { clearAllIdbImages, getAllImageRecordsFromIdb } from '../services/storage/indexedDbImages';
 
 interface AppState {
   // Data
@@ -173,6 +173,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // Check App Lock
     const shouldLock = meta.settings.appLock?.enabled || false;
+    const idbImageRecords = await getAllImageRecordsFromIdb();
 
     set({
       settings: meta.settings,
@@ -180,7 +181,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       revision: meta.revision,
       transactions,
       notes,
-      isAppLocked: shouldLock
+      isAppLocked: shouldLock,
+      imageRecords: idbImageRecords
     });
 
     // 2. Initialize AppFolder in background

@@ -4,9 +4,10 @@ import { Transaction } from '../models/types';
 import { formatMoney } from '../utils/money';
 import { getActiveTransactions } from '../services/calc/engine';
 import { MdArrowBack, MdClose, MdAttachFile } from 'react-icons/md';
+import { getImageFullUrl } from '../services/storage/indexedDbImages';
 
 export const SearchScreen: React.FC = () => {
-  const { transactions, categories, goBack, openEditSheet } = useAppStore();
+  const { transactions, categories, goBack, openEditSheet, openViewer, imageRecords } = useAppStore();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Transaction[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -210,8 +211,34 @@ export const SearchScreen: React.FC = () => {
                     ) : null}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {tx.imageId && <MdAttachFile size={18} color="var(--color-primary)" />}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {tx.imageId && (
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const url = await getImageFullUrl(tx.imageId!);
+                          if (url) openViewer(url, tx, imageRecords[tx.imageId!]);
+                        }}
+                        aria-label="View attachment"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '3px 7px',
+                          borderRadius: '6px',
+                          backgroundColor: 'rgba(23, 162, 184, 0.15)',
+                          border: '1px solid var(--color-primary)',
+                          color: 'var(--color-primary)',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <MdAttachFile size={13} />
+                        <span>View</span>
+                      </button>
+                    )}
                     <span
                       style={{
                         fontSize: '15px',

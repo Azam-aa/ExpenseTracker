@@ -118,6 +118,7 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
         ref={cameraInputRef}
         accept="image/*"
         capture="environment"
+        data-testid="camera-input"
         style={{ display: 'none' }}
         onChange={handleInputChange}
       />
@@ -125,6 +126,7 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
         type="file"
         ref={galleryInputRef}
         accept="image/*"
+        data-testid="gallery-input"
         style={{ display: 'none' }}
         onChange={handleInputChange}
       />
@@ -132,6 +134,7 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
         type="file"
         ref={pdfInputRef}
         accept="application/pdf,.pdf"
+        data-testid="pdf-input"
         style={{ display: 'none' }}
         onChange={handleInputChange}
       />
@@ -139,6 +142,7 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
         type="file"
         ref={excelInputRef}
         accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+        data-testid="excel-input"
         style={{ display: 'none' }}
         onChange={handleInputChange}
       />
@@ -146,6 +150,7 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
         type="file"
         ref={anyFileInputRef}
         accept="*/*"
+        data-testid="any-file-input"
         style={{ display: 'none' }}
         onChange={handleInputChange}
       />

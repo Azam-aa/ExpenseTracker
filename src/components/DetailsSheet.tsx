@@ -34,8 +34,12 @@ export const DetailsSheet: React.FC<DetailsSheetProps> = ({
   const handleThumbClick = async () => {
     if (transaction.imageId) {
       const fullUrl = await getImageFullUrl(transaction.imageId);
+      const { imageRecords } = useAppStore.getState();
+      const rec = imageRecords[transaction.imageId];
       if (fullUrl) {
-        openViewer(fullUrl, transaction);
+        openViewer(fullUrl, transaction, rec);
+      } else if (thumbUrl) {
+        openViewer(thumbUrl, transaction, rec);
       }
     }
   };
@@ -141,23 +145,38 @@ export const DetailsSheet: React.FC<DetailsSheetProps> = ({
 
         {/* Image Thumbnail */}
         {thumbUrl && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <span style={{ fontSize: '13px', color: 'var(--color-text-dim)' }}>
-              Attached Receipt (Tap to view full):
-            </span>
+          <div
+            onClick={handleThumbClick}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              padding: '10px 12px',
+              borderRadius: '12px',
+              backgroundColor: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid var(--color-primary)',
+              cursor: 'pointer'
+            }}
+          >
             <img
               src={thumbUrl}
               alt="Receipt"
-              onClick={handleThumbClick}
               style={{
-                width: '90px',
-                height: '90px',
-                borderRadius: '12px',
+                width: '60px',
+                height: '60px',
+                borderRadius: '8px',
                 objectFit: 'cover',
-                cursor: 'pointer',
-                border: '2px solid var(--color-primary)'
+                border: '1px solid rgba(255, 255, 255, 0.2)'
               }}
             />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text)' }}>
+                Attached Document / Receipt
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--color-primary)', marginTop: '2px' }}>
+                Tap here to view full screen
+              </div>
+            </div>
           </div>
         )}
 
