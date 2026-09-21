@@ -6,7 +6,7 @@ import { getActiveTransactions } from '../services/calc/engine';
 import { MdArrowBack, MdClose, MdAttachFile } from 'react-icons/md';
 
 export const SearchScreen: React.FC = () => {
-  const { transactions, categories, goBack, openDetailsSheet } = useAppStore();
+  const { transactions, categories, goBack, openEditSheet } = useAppStore();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Transaction[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -168,7 +168,7 @@ export const SearchScreen: React.FC = () => {
               return (
                 <div
                   key={tx.id}
-                  onClick={() => openDetailsSheet(tx)}
+                  onClick={() => openEditSheet(tx)}
                   style={{
                     borderRadius: '12px',
                     border: '1px solid var(--color-outline)',

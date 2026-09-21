@@ -17,6 +17,7 @@ import { PhotoPicker } from './PhotoPicker';
 import { processImageBytes } from '../services/images/processor';
 import { getImageThumbnailUrl } from '../services/storage/indexedDbImages';
 import { saveDraft, loadDraft, clearDraft } from '../services/storage/localStorageShards';
+import { Capacitor } from '@capacitor/core';
 
 interface AddEditSheetProps {
   onClose: () => void;
@@ -78,14 +79,14 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const draftTimerRef = useRef<number | null>(null);
+  const processingPromiseRef = useRef<Promise<ImageRecord | null> | null>(null);
+  const directFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Load existing image if in edit mode
+  // Load existing thumbnail if editing
   useEffect(() => {
     if (editingTransaction && editingTransaction.imageId) {
       getImageThumbnailUrl(editingTransaction.imageId).then((url) => {
-        if (url) {
-          setAttachedThumbnailUrl(url);
-        }
+        if (url) setAttachedThumbnailUrl(url);
       });
     } else if (!isEdit) {
       // Check for saved draft
@@ -122,27 +123,50 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
     };
   }, [type, title, amountStr, description, categoryId, isEdit]);
 
-  const handleImagePicked = async (blob: Blob) => {
-    try {
-      setIsProcessingImage(true);
-      setAttachedImageBlob(blob);
-      const tempUrl = URL.createObjectURL(blob);
-      setAttachedThumbnailUrl(tempUrl);
+  const handleImagePicked = (blob: Blob) => {
+    setIsProcessingImage(true);
+    setAttachedImageBlob(blob);
+    const tempUrl = URL.createObjectURL(blob);
+    setAttachedThumbnailUrl(tempUrl);
 
-      // Process image in background
-      const amtMinor = parseAmountToMinor(amountStr) || 0;
-      const res = await processImageBytes(blob, editingTransaction ? editingTransaction.id : generateId(), {
-        date,
-        type,
-        amountMinor: amtMinor,
-        title: title || 'receipt'
-      });
-      setPendingImageRecord(res.record);
-    } catch (e) {
-      console.error('[AddEditSheet] Image processing failed:', e);
-      showToast('Could not attach image');
-    } finally {
-      setIsProcessingImage(false);
+    const txId = editingTransaction ? editingTransaction.id : generateId();
+    const promise = (async () => {
+      try {
+        const amtMinor = parseAmountToMinor(amountStr) || 0;
+        const res = await processImageBytes(blob, txId, {
+          date,
+          type,
+          amountMinor: amtMinor,
+          title: title.trim() || 'receipt'
+        });
+        setPendingImageRecord(res.record);
+        return res.record;
+      } catch (e) {
+        console.error('[AddEditSheet] Image processing failed:', e);
+        showToast('Could not attach image');
+        return null;
+      } finally {
+        setIsProcessingImage(false);
+      }
+    })();
+
+    processingPromiseRef.current = promise;
+    return promise;
+  };
+
+  const handleDirectFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImagePicked(file);
+    }
+    e.target.value = '';
+  };
+
+  const handleOpenPhotoPicker = () => {
+    if (Capacitor.isNativePlatform()) {
+      setShowPhotoPicker(true);
+    } else {
+      directFileInputRef.current?.click();
     }
   };
 
@@ -150,6 +174,7 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
     setAttachedImageBlob(null);
     setAttachedThumbnailUrl(null);
     setPendingImageRecord(null);
+    processingPromiseRef.current = null;
   };
 
   const handleSave = async () => {
@@ -160,11 +185,20 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
     }
     setValidationError(null);
 
+    // Wait for in-flight image compression & storage if user saved quickly
+    let activeRecord = pendingImageRecord;
+    if (processingPromiseRef.current) {
+      setIsProcessingImage(true);
+      const res = await processingPromiseRef.current;
+      if (res) activeRecord = res;
+      setIsProcessingImage(false);
+    }
+
     const now = Date.now();
     let finalImageId = editingTransaction ? editingTransaction.imageId : null;
 
-    if (pendingImageRecord) {
-      finalImageId = pendingImageRecord.id;
+    if (activeRecord) {
+      finalImageId = activeRecord.id;
     } else if (!attachedThumbnailUrl && !attachedImageBlob) {
       finalImageId = null;
     }
@@ -173,7 +207,7 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
       const updatedTx: Transaction = {
         ...editingTransaction,
         type,
-        title: title.trim(),
+        title: title.trim() || 'Untitled',
         amountMinor: minor,
         description: description.trim(),
         categoryId,
@@ -182,13 +216,13 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
         updatedAt: now,
         imageId: finalImageId
       };
-      updateTransaction(updatedTx, pendingImageRecord || undefined);
+      updateTransaction(updatedTx, activeRecord || undefined);
       showToast('Saved');
     } else {
       const newTx: Transaction = {
         id: generateId(),
         type,
-        title: title.trim(),
+        title: title.trim() || 'Untitled',
         amountMinor: minor,
         description: description.trim(),
         categoryId,
@@ -199,7 +233,7 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
         imageId: finalImageId,
         deletedAt: null
       };
-      addTransaction(newTx, pendingImageRecord || undefined);
+      addTransaction(newTx, activeRecord || undefined);
       clearDraft();
       showToast('Added');
     }
@@ -230,6 +264,14 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
       }}
       onClick={onClose}
     >
+      <input
+        type="file"
+        ref={directFileInputRef}
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleDirectFileChange}
+      />
+
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -338,7 +380,7 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
             {currentCategory ? getCategoryIcon(currentCategory.icon, 22) : <MdCategory size={22} />}
           </button>
 
-          {/* Title Field */}
+          {/* Title Field with prominent white line */}
           <div style={{ flex: 1.2, position: 'relative' }}>
             <input
               type="text"
@@ -348,13 +390,15 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
               style={{
                 width: '100%',
                 fontSize: '16px',
-                padding: '8px 2px',
-                borderBottom: '2px solid var(--color-outline)'
+                padding: '8px 4px',
+                borderBottom: '2px solid rgba(255, 255, 255, 0.85)',
+                color: '#ffffff',
+                backgroundColor: 'transparent'
               }}
             />
           </div>
 
-          {/* Amount Field */}
+          {/* Amount Field with prominent white line */}
           <div style={{ flex: 1, position: 'relative' }}>
             <input
               type="text"
@@ -368,8 +412,10 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
               style={{
                 width: '100%',
                 fontSize: '16px',
-                padding: '8px 2px',
-                borderBottom: `2px solid ${validationError ? 'var(--color-expense)' : 'var(--color-outline)'}`
+                padding: '8px 4px',
+                borderBottom: validationError ? '2px solid var(--color-expense)' : '2px solid rgba(255, 255, 255, 0.85)',
+                color: '#ffffff',
+                backgroundColor: 'transparent'
               }}
             />
             {validationError && (
@@ -407,7 +453,7 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
           </button>
         </div>
 
-        {/* Row 3: Description */}
+        {/* Row 3: Description with prominent white line */}
         <div
           style={{
             display: 'flex',
@@ -417,7 +463,7 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
             paddingLeft: '4px'
           }}
         >
-          <MdOutlineModeEdit size={24} color="var(--color-text-dim)" />
+          <MdOutlineModeEdit size={24} color="rgba(255, 255, 255, 0.7)" />
           <input
             type="text"
             placeholder="Description"
@@ -426,8 +472,10 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
             style={{
               flex: 1,
               fontSize: '15px',
-              padding: '8px 2px',
-              borderBottom: '1px solid var(--color-outline)'
+              padding: '8px 4px',
+              borderBottom: '2px solid rgba(255, 255, 255, 0.7)',
+              color: '#ffffff',
+              backgroundColor: 'transparent'
             }}
           />
         </div>
@@ -448,24 +496,35 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
                 src={attachedThumbnailUrl}
                 alt="Receipt thumbnail"
                 onClick={() => {
-                  if (editingTransaction) {
-                    openViewer(attachedThumbnailUrl, editingTransaction);
-                  }
+                  openViewer(attachedThumbnailUrl, editingTransaction || {
+                    id: 'preview',
+                    type,
+                    title: title || 'Receipt Preview',
+                    amountMinor: parseAmountToMinor(amountStr) || 0,
+                    description: description || '',
+                    categoryId,
+                    date,
+                    time,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                    imageId: pendingImageRecord ? pendingImageRecord.id : null,
+                    deletedAt: null
+                  });
                 }}
                 style={{
-                  width: '68px',
-                  height: '68px',
-                  borderRadius: '12px',
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '10px',
                   objectFit: 'cover',
                   cursor: 'pointer',
-                  border: '1px solid var(--color-outline)'
+                  border: '2px solid var(--color-primary)'
                 }}
               />
               <span style={{ fontSize: '14px', color: 'var(--color-text)', flex: 1 }}>
-                {isProcessingImage ? 'Compressing...' : 'Image attached'}
+                {isProcessingImage ? 'Saving photo...' : 'Photo attached (Tap to view)'}
               </span>
               <button
-                onClick={() => setShowPhotoPicker(true)}
+                onClick={handleOpenPhotoPicker}
                 style={{ color: 'var(--color-primary)', fontSize: '14px', fontWeight: 500 }}
               >
                 Change
@@ -479,18 +538,19 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
             </div>
           ) : (
             <button
-              onClick={() => setShowPhotoPicker(true)}
+              onClick={handleOpenPhotoPicker}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
                 fontSize: '15px',
-                color: 'var(--color-text-dim)',
-                padding: '6px 0'
+                color: 'var(--color-primary)',
+                padding: '6px 0',
+                fontWeight: 500
               }}
             >
-              <MdImage size={24} color="var(--color-text-dim)" />
-              Add Image
+              <MdImage size={24} color="var(--color-primary)" />
+              Add Photo / Receipt
             </button>
           )}
         </div>

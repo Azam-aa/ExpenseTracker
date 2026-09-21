@@ -107,12 +107,8 @@ test.describe('Day to Day Expenses - Parity & End-to-End Test Suite', () => {
     await page.click('button[aria-label="Save transaction"]');
     await expect(page.locator('text=Coffee with friend')).toBeVisible();
 
-    // Tap transaction to open details
+    // Tap transaction to directly open edit sheet
     await page.click('text=Coffee with friend');
-    await expect(page.locator('text=Transaction Details')).toBeVisible();
-
-    // Tap Edit to open edit sheet
-    await page.click('button:has-text("Edit")');
     await expect(page.locator('button:has-text("Delete")')).toBeVisible();
 
     // Tap Delete inside edit sheet

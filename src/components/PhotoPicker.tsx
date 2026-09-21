@@ -29,9 +29,9 @@ export const PhotoPicker: React.FC<PhotoPickerProps> = ({ onImagePicked, onClose
           onClose();
         }
       } else {
-        // Fallback for desktop/testing
+        // Fallback for desktop/browser
         if (fileInputRef.current) {
-          fileInputRef.current.capture = 'environment';
+          fileInputRef.current.removeAttribute('capture');
           fileInputRef.current.click();
         }
       }
