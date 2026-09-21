@@ -7,14 +7,25 @@ import {
   MdFingerprint,
   MdCalculate,
   MdCloudUpload,
+  MdTableChart,
   MdGridView,
   MdSettings,
   MdHelpOutline
 } from 'react-icons/md';
 import { hashPin } from '../services/lock/pinLock';
+import { exportAccountStatementExcel } from '../services/export/excelExport';
 
 export const SettingsScreen: React.FC = () => {
-  const { settings, updateSettings, goBack, navigate, showToast } = useAppStore();
+  const {
+    settings,
+    updateSettings,
+    transactions,
+    categories,
+    imageRecords,
+    goBack,
+    navigate,
+    showToast
+  } = useAppStore();
   const [showPinSetup, setShowPinSetup] = useState(false);
   const [setupPin, setSetupPin] = useState('');
 
@@ -192,6 +203,29 @@ export const SettingsScreen: React.FC = () => {
             </div>
             <div style={{ fontSize: '13px', color: 'var(--color-text-dim)', marginTop: '2px' }}>
               Local backup, restore, export as excel.
+            </div>
+          </div>
+        </div>
+
+        {/* 6b. Account Statement (Excel) */}
+        <div
+          onClick={async () => {
+            showToast('Generating Account Statement (Excel)...');
+            const ok = await exportAccountStatementExcel(transactions, categories, {
+              imageRecords,
+              openingBalanceMinor: settings.openingBalanceMinor
+            });
+            if (!ok) showToast('Export failed');
+          }}
+          style={{ display: 'flex', alignItems: 'center', gap: '16px', minHeight: '64px', cursor: 'pointer' }}
+        >
+          <MdTableChart size={28} color="var(--color-primary)" />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '15px', fontWeight: 500, color: 'var(--color-text)' }}>
+              Account Statement (Excel)
+            </div>
+            <div style={{ fontSize: '13px', color: 'var(--color-primary)', marginTop: '2px' }}>
+              Download month-wise statement with debits, credits, and attachments.
             </div>
           </div>
         </div>

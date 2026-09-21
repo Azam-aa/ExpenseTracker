@@ -102,8 +102,11 @@ export const BackupExportScreen: React.FC = () => {
   };
 
   const handleExportExcel = async () => {
-    showToast('Generating Excel (.xlsx)...');
-    const ok = await exportToExcel(transactions, categories);
+    showToast('Generating Account Statement (Excel)...');
+    const ok = await exportToExcel(transactions, categories, {
+      imageRecords,
+      openingBalanceMinor: settings.openingBalanceMinor
+    });
     if (!ok) showToast('Excel export failed');
   };
 

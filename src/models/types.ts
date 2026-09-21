@@ -15,16 +15,20 @@ export interface Transaction {
   deletedAt: number | null;// soft delete epoch ms, purged after 30 days
 }
 
+export type AttachmentType = 'image' | 'pdf' | 'excel' | 'document';
+
 export interface ImageRecord {
   id: string;
   transactionId: string;
-  mime: 'image/webp' | 'image/jpeg';
+  mime: string;            // 'image/webp' | 'image/jpeg' | 'application/pdf' | etc.
   width: number;
   height: number;
   bytes: number;
   fileName: string;        // e.g. 2026-09-20_expense_1250_electricity_ab12cd.webp
   sha256: string;
   createdAt: number;
+  originalName?: string;
+  fileType?: AttachmentType;
 }
 
 export interface Category {

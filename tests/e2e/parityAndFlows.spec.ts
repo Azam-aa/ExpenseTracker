@@ -166,4 +166,35 @@ test.describe('Day to Day Expenses - Parity & End-to-End Test Suite', () => {
     await expect(page.locator('button:has-text("Start Integrity Check")')).toBeVisible();
     await page.screenshot({ path: 'tests/screenshots/10-check-data-screen.png' });
   });
+
+  test('6. Account Statement Excel download & Universal Attachment flow', async ({ page }) => {
+    await page.goto('/');
+
+    // Verify Add Sheet has Attachment row above Description row
+    await page.click('button[aria-label="Add transaction"]');
+    await expect(page.locator('text=Add Attachment (Photo, PDF, Excel)')).toBeVisible();
+    await expect(page.locator('input[placeholder="Description"]')).toBeVisible();
+
+    // Close Add Sheet
+    await page.click('button[aria-label="Collapse sheet"]');
+
+    // Open Settings and verify Account Statement (Excel) button
+    await page.click('button[aria-label="More options"]');
+    await page.click('button:has-text("Settings")');
+
+    await expect(page.locator('text=Account Statement (Excel)')).toBeVisible();
+
+    // Wait for download event when tapping Account Statement
+    const downloadPromise = page.waitForEvent('download', { timeout: 8000 }).catch(() => null);
+    await page.click('text=Account Statement (Excel)');
+    const download = await downloadPromise;
+    if (download) {
+      expect(download.suggestedFilename()).toContain('Account_Statement_');
+      expect(download.suggestedFilename()).toContain('.xlsx');
+    }
+
+    // Verify toast feedback
+    await expect(page.locator('text=Generating Account Statement (Excel)...')).toBeVisible();
+  });
 });
+

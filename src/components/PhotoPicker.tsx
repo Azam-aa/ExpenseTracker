@@ -1,15 +1,39 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
-import { MdCameraAlt, MdPhotoLibrary, MdClose } from 'react-icons/md';
+import {
+  MdCameraAlt,
+  MdPhotoLibrary,
+  MdPictureAsPdf,
+  MdTableChart,
+  MdInsertDriveFile,
+  MdClose
+} from 'react-icons/md';
 
-interface PhotoPickerProps {
-  onImagePicked: (blob: Blob) => void;
+export interface AttachmentPickerProps {
+  onFilePicked: (file: File | Blob, originalName: string) => void;
+  onImagePicked?: (blob: Blob) => void;
   onClose: () => void;
 }
 
-export const PhotoPicker: React.FC<PhotoPickerProps> = ({ onImagePicked, onClose }) => {
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
+  onFilePicked,
+  onImagePicked,
+  onClose
+}) => {
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const pdfInputRef = useRef<HTMLInputElement | null>(null);
+  const excelInputRef = useRef<HTMLInputElement | null>(null);
+  const anyFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const deliverFile = (blob: Blob, name: string) => {
+    if (onFilePicked) {
+      onFilePicked(blob, name);
+    } else if (onImagePicked) {
+      onImagePicked(blob);
+    }
+    onClose();
+  };
 
   const handleTakePhoto = async () => {
     try {
@@ -19,20 +43,17 @@ export const PhotoPicker: React.FC<PhotoPickerProps> = ({ onImagePicked, onClose
           allowEditing: false,
           resultType: CameraResultType.Uri,
           source: CameraSource.Camera,
-          saveToGallery: false // As required in 8.5, do not clutter phone gallery
+          saveToGallery: false
         });
 
         if (photo.webPath) {
           const res = await fetch(photo.webPath);
           const blob = await res.blob();
-          onImagePicked(blob);
-          onClose();
+          deliverFile(blob, 'camera_photo.jpg');
         }
       } else {
-        // Fallback for desktop/browser
-        if (fileInputRef.current) {
-          fileInputRef.current.removeAttribute('capture');
-          fileInputRef.current.click();
+        if (photoInputRef.current) {
+          photoInputRef.current.click();
         }
       }
     } catch (e) {
@@ -54,13 +75,11 @@ export const PhotoPicker: React.FC<PhotoPickerProps> = ({ onImagePicked, onClose
         if (photo.webPath) {
           const res = await fetch(photo.webPath);
           const blob = await res.blob();
-          onImagePicked(blob);
-          onClose();
+          deliverFile(blob, 'gallery_photo.jpg');
         }
       } else {
-        if (fileInputRef.current) {
-          fileInputRef.current.removeAttribute('capture');
-          fileInputRef.current.click();
+        if (photoInputRef.current) {
+          photoInputRef.current.click();
         }
       }
     } catch (e) {
@@ -69,12 +88,12 @@ export const PhotoPicker: React.FC<PhotoPickerProps> = ({ onImagePicked, onClose
     }
   };
 
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      onImagePicked(file);
-      onClose();
+      deliverFile(file, file.name);
     }
+    e.target.value = '';
   };
 
   return (
@@ -82,21 +101,44 @@ export const PhotoPicker: React.FC<PhotoPickerProps> = ({ onImagePicked, onClose
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        backgroundColor: 'rgba(0, 0, 0, 0.65)',
         display: 'flex',
         alignItems: 'flex-end',
         justifyContent: 'center',
-        zIndex: 110
+        zIndex: 250
       }}
       onClick={onClose}
     >
+      {/* Hidden file inputs for distinct file filters */}
       <input
         type="file"
-        ref={fileInputRef}
+        ref={photoInputRef}
         accept="image/*"
         style={{ display: 'none' }}
-        onChange={handleFileInputChange}
+        onChange={handleInputChange}
       />
+      <input
+        type="file"
+        ref={pdfInputRef}
+        accept="application/pdf,.pdf"
+        style={{ display: 'none' }}
+        onChange={handleInputChange}
+      />
+      <input
+        type="file"
+        ref={excelInputRef}
+        accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+        style={{ display: 'none' }}
+        onChange={handleInputChange}
+      />
+      <input
+        type="file"
+        ref={anyFileInputRef}
+        accept="*/*"
+        style={{ display: 'none' }}
+        onChange={handleInputChange}
+      />
+
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -105,59 +147,122 @@ export const PhotoPicker: React.FC<PhotoPickerProps> = ({ onImagePicked, onClose
           backgroundColor: 'var(--color-sheet)',
           borderTopLeftRadius: '24px',
           borderTopRightRadius: '24px',
-          padding: '16px 16px calc(var(--safe-bottom) + 20px) 16px',
+          padding: '18px 16px calc(var(--safe-bottom) + 20px) 16px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '4px'
+          gap: '8px'
         }}
       >
+        <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-text)', padding: '0 8px 6px 8px' }}>
+          Attach Receipt or Document
+        </div>
+
+        {/* 1. Camera */}
         <button
           onClick={handleTakePhoto}
           style={{
-            height: '56px',
+            height: '52px',
             display: 'flex',
             alignItems: 'center',
             gap: '16px',
             padding: '0 16px',
-            fontSize: '16px',
+            fontSize: '15px',
             color: 'var(--color-text)',
             borderRadius: '12px',
             backgroundColor: 'rgba(255, 255, 255, 0.05)'
           }}
         >
           <MdCameraAlt size={24} color="var(--color-primary)" />
-          Take Photo
+          Take Photo (Camera)
         </button>
 
+        {/* 2. Gallery */}
         <button
           onClick={handleChooseGallery}
           style={{
-            height: '56px',
+            height: '52px',
             display: 'flex',
             alignItems: 'center',
             gap: '16px',
             padding: '0 16px',
-            fontSize: '16px',
+            fontSize: '15px',
             color: 'var(--color-text)',
             borderRadius: '12px',
             backgroundColor: 'rgba(255, 255, 255, 0.05)'
           }}
         >
-          <MdPhotoLibrary size={24} color="var(--color-primary)" />
-          Choose from Gallery
+          <MdPhotoLibrary size={24} color="#64b5f6" />
+          Choose Photo from Gallery
+        </button>
+
+        {/* 3. PDF Document */}
+        <button
+          onClick={() => pdfInputRef.current?.click()}
+          style={{
+            height: '52px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            padding: '0 16px',
+            fontSize: '15px',
+            color: 'var(--color-text)',
+            borderRadius: '12px',
+            backgroundColor: 'rgba(255, 255, 255, 0.05)'
+          }}
+        >
+          <MdPictureAsPdf size={24} color="#e57373" />
+          Attach PDF Document (.pdf)
+        </button>
+
+        {/* 4. Excel / Spreadsheet */}
+        <button
+          onClick={() => excelInputRef.current?.click()}
+          style={{
+            height: '52px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            padding: '0 16px',
+            fontSize: '15px',
+            color: 'var(--color-text)',
+            borderRadius: '12px',
+            backgroundColor: 'rgba(255, 255, 255, 0.05)'
+          }}
+        >
+          <MdTableChart size={24} color="#81c784" />
+          Attach Excel / Spreadsheet (.xlsx, .csv)
+        </button>
+
+        {/* 5. Any Document */}
+        <button
+          onClick={() => anyFileInputRef.current?.click()}
+          style={{
+            height: '52px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            padding: '0 16px',
+            fontSize: '15px',
+            color: 'var(--color-text)',
+            borderRadius: '12px',
+            backgroundColor: 'rgba(255, 255, 255, 0.05)'
+          }}
+        >
+          <MdInsertDriveFile size={24} color="#ba68c8" />
+          Attach Any Document / File
         </button>
 
         <button
           onClick={onClose}
           style={{
-            height: '52px',
+            height: '48px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '10px',
-            fontSize: '16px',
+            fontSize: '15px',
             color: 'var(--color-text-dim)',
-            marginTop: '8px'
+            marginTop: '4px'
           }}
         >
           <MdClose size={20} />

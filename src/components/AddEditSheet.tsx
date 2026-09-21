@@ -3,7 +3,7 @@ import {
   MdKeyboardArrowDown,
   MdCheck,
   MdOutlineModeEdit,
-  MdImage,
+  MdAttachFile,
   MdDeleteOutline,
   MdCategory
 } from 'react-icons/md';
@@ -14,10 +14,9 @@ import { getTodayDateString, getCurrentTimeString } from '../utils/dates';
 import { generateId } from '../utils/ids';
 import { CategoryPicker, getCategoryIcon } from './CategoryPicker';
 import { PhotoPicker } from './PhotoPicker';
-import { processImageBytes } from '../services/images/processor';
+import { processAttachmentBytes } from '../services/images/processor';
 import { getImageThumbnailUrl } from '../services/storage/indexedDbImages';
 import { saveDraft, loadDraft, clearDraft } from '../services/storage/localStorageShards';
-import { Capacitor } from '@capacitor/core';
 
 interface AddEditSheetProps {
   onClose: () => void;
@@ -123,9 +122,10 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
     };
   }, [type, title, amountStr, description, categoryId, isEdit]);
 
-  const handleImagePicked = (blob: Blob) => {
+  const handleFilePicked = (blob: Blob, originalName?: string) => {
     setIsProcessingImage(true);
     setAttachedImageBlob(blob);
+    const fileName = originalName || (blob instanceof File ? blob.name : 'attachment');
     const tempUrl = URL.createObjectURL(blob);
     setAttachedThumbnailUrl(tempUrl);
 
@@ -133,17 +133,21 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
     const promise = (async () => {
       try {
         const amtMinor = parseAmountToMinor(amountStr) || 0;
-        const res = await processImageBytes(blob, txId, {
+        const res = await processAttachmentBytes(blob, fileName, txId, {
           date,
           type,
           amountMinor: amtMinor,
-          title: title.trim() || 'receipt'
+          title: title.trim() || 'attachment'
         });
         setPendingImageRecord(res.record);
+        if (res.thumbnailBlob) {
+          const thumbUrl = URL.createObjectURL(res.thumbnailBlob);
+          setAttachedThumbnailUrl(thumbUrl);
+        }
         return res.record;
       } catch (e) {
-        console.error('[AddEditSheet] Image processing failed:', e);
-        showToast('Could not attach image');
+        console.error('[AddEditSheet] Attachment processing failed:', e);
+        showToast('Could not attach file');
         return null;
       } finally {
         setIsProcessingImage(false);
@@ -157,17 +161,13 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
   const handleDirectFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      handleImagePicked(file);
+      handleFilePicked(file, file.name);
     }
     e.target.value = '';
   };
 
   const handleOpenPhotoPicker = () => {
-    if (Capacitor.isNativePlatform()) {
-      setShowPhotoPicker(true);
-    } else {
-      directFileInputRef.current?.click();
-    }
+    setShowPhotoPicker(true);
   };
 
   const handleRemoveImage = () => {
@@ -453,7 +453,106 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
           </button>
         </div>
 
-        {/* Row 3: Description with prominent white line */}
+        {/* Row 3: Attachment (Photo, PDF, Excel, Document) - "First, keep the image" */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            marginBottom: '16px',
+            paddingLeft: '4px'
+          }}
+        >
+          {attachedThumbnailUrl ? (
+            <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '12px' }}>
+              <img
+                src={attachedThumbnailUrl}
+                alt="Attachment thumbnail"
+                onClick={() => {
+                  openViewer(attachedThumbnailUrl, editingTransaction || {
+                    id: 'preview',
+                    type,
+                    title: title || 'Attachment Preview',
+                    amountMinor: parseAmountToMinor(amountStr) || 0,
+                    description: description || '',
+                    categoryId,
+                    date,
+                    time,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                    imageId: pendingImageRecord ? pendingImageRecord.id : null,
+                    deletedAt: null
+                  });
+                }}
+                style={{
+                  width: '54px',
+                  height: '54px',
+                  borderRadius: '10px',
+                  objectFit: 'cover',
+                  cursor: 'pointer',
+                  border: '2px solid var(--color-primary)',
+                  flexShrink: 0
+                }}
+              />
+              <div
+                style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                onClick={() => {
+                  openViewer(attachedThumbnailUrl, editingTransaction || {
+                    id: 'preview',
+                    type,
+                    title: title || 'Attachment Preview',
+                    amountMinor: parseAmountToMinor(amountStr) || 0,
+                    description: description || '',
+                    categoryId,
+                    date,
+                    time,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                    imageId: pendingImageRecord ? pendingImageRecord.id : null,
+                    deletedAt: null
+                  });
+                }}
+              >
+                <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--color-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {pendingImageRecord?.originalName || (pendingImageRecord?.fileType ? `${pendingImageRecord.fileType.toUpperCase()} file` : 'Attachment')}
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--color-primary)', marginTop: '2px' }}>
+                  {isProcessingImage ? 'Saving...' : 'Attached (Tap to view)'}
+                </div>
+              </div>
+              <button
+                onClick={handleOpenPhotoPicker}
+                style={{ color: 'var(--color-primary)', fontSize: '13px', fontWeight: 500, padding: '4px 6px' }}
+              >
+                Change
+              </button>
+              <button
+                onClick={handleRemoveImage}
+                style={{ color: 'var(--color-expense)', fontSize: '13px', fontWeight: 500, padding: '4px 6px' }}
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleOpenPhotoPicker}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                fontSize: '14px',
+                color: 'var(--color-primary)',
+                padding: '6px 0',
+                fontWeight: 500
+              }}
+            >
+              <MdAttachFile size={22} color="var(--color-primary)" />
+              Add Attachment (Photo, PDF, Excel)
+            </button>
+          )}
+        </div>
+
+        {/* Row 4: Description with prominent white line - "then keep the description" */}
         <div
           style={{
             display: 'flex',
@@ -478,81 +577,6 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
               backgroundColor: 'transparent'
             }}
           />
-        </div>
-
-        {/* Row 4: Image Attachment */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            marginBottom: '16px',
-            paddingLeft: '4px'
-          }}
-        >
-          {attachedThumbnailUrl ? (
-            <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '12px' }}>
-              <img
-                src={attachedThumbnailUrl}
-                alt="Receipt thumbnail"
-                onClick={() => {
-                  openViewer(attachedThumbnailUrl, editingTransaction || {
-                    id: 'preview',
-                    type,
-                    title: title || 'Receipt Preview',
-                    amountMinor: parseAmountToMinor(amountStr) || 0,
-                    description: description || '',
-                    categoryId,
-                    date,
-                    time,
-                    createdAt: Date.now(),
-                    updatedAt: Date.now(),
-                    imageId: pendingImageRecord ? pendingImageRecord.id : null,
-                    deletedAt: null
-                  });
-                }}
-                style={{
-                  width: '64px',
-                  height: '64px',
-                  borderRadius: '10px',
-                  objectFit: 'cover',
-                  cursor: 'pointer',
-                  border: '2px solid var(--color-primary)'
-                }}
-              />
-              <span style={{ fontSize: '14px', color: 'var(--color-text)', flex: 1 }}>
-                {isProcessingImage ? 'Saving photo...' : 'Photo attached (Tap to view)'}
-              </span>
-              <button
-                onClick={handleOpenPhotoPicker}
-                style={{ color: 'var(--color-primary)', fontSize: '14px', fontWeight: 500 }}
-              >
-                Change
-              </button>
-              <button
-                onClick={handleRemoveImage}
-                style={{ color: 'var(--color-expense)', fontSize: '14px', fontWeight: 500 }}
-              >
-                Remove
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={handleOpenPhotoPicker}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                fontSize: '15px',
-                color: 'var(--color-primary)',
-                padding: '6px 0',
-                fontWeight: 500
-              }}
-            >
-              <MdImage size={24} color="var(--color-primary)" />
-              Add Photo / Receipt
-            </button>
-          )}
         </div>
 
         {/* Edit Mode Extras: Date, Time & Delete Button */}
@@ -624,7 +648,8 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
 
         {showPhotoPicker && (
           <PhotoPicker
-            onImagePicked={handleImagePicked}
+            onFilePicked={handleFilePicked}
+            onImagePicked={(blob) => handleFilePicked(blob, 'photo.jpg')}
             onClose={() => setShowPhotoPicker(false)}
           />
         )}

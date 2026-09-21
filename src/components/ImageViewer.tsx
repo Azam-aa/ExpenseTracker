@@ -1,10 +1,21 @@
-import React, { useState } from 'react';
-import { Transaction } from '../models/types';
+import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
+import { Transaction, ImageRecord } from '../models/types';
 import { formatMoney } from '../utils/money';
-import { MdArrowBack, MdDelete, MdPhotoCamera } from 'react-icons/md';
+import {
+  MdArrowBack,
+  MdDelete,
+  MdAttachFile,
+  MdOpenInNew,
+  MdShare
+} from 'react-icons/md';
 import { PhotoPicker } from './PhotoPicker';
-import { processImageBytes } from '../services/images/processor';
+import { processAttachmentBytes, blobToBase64 } from '../services/images/processor';
+import { getImageFromIdb } from '../services/storage/indexedDbImages';
 import { useAppStore } from '../store/useAppStore';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
+import { Capacitor } from '@capacitor/core';
 
 interface ImageViewerProps {
   imageUrl: string;
@@ -19,8 +30,54 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 }) => {
   const { updateTransaction, showToast } = useAppStore();
   const [scale, setScale] = useState(1);
-  const [showPhotoPicker, setShowPhotoPicker] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+
+  const [record, setRecord] = useState<ImageRecord | null>(null);
+  const [fullBlob, setFullBlob] = useState<Blob | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string>(imageUrl);
+  const [excelRows, setExcelRows] = useState<any[][] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let createdUrl: string | null = null;
+
+    if (transaction.imageId) {
+      getImageFromIdb(transaction.imageId).then(async (entry) => {
+        if (!active || !entry) return;
+        setRecord(entry.record);
+        setFullBlob(entry.blob);
+
+        createdUrl = URL.createObjectURL(entry.blob);
+        setBlobUrl(createdUrl);
+
+        const isExcel =
+          entry.record.fileType === 'excel' ||
+          /\.(xlsx|xls|csv)$/i.test(entry.record.fileName) ||
+          entry.record.mime?.includes('spreadsheet') ||
+          entry.record.mime?.includes('excel');
+
+        if (isExcel) {
+          try {
+            const buf = await entry.blob.arrayBuffer();
+            const wb = XLSX.read(buf, { type: 'array' });
+            const sheet = wb.Sheets[wb.SheetNames[0]];
+            if (sheet) {
+              const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+              if (active) setExcelRows(rows.slice(0, 60));
+            }
+          } catch (e) {
+            console.warn('[Viewer] Could not parse Excel for preview:', e);
+          }
+        }
+      });
+    }
+
+    return () => {
+      active = false;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [transaction.imageId]);
 
   const handleDoubleTap = () => {
     setScale((prev) => (prev > 1.2 ? 1 : 2.2));
@@ -32,17 +89,18 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
       imageId: null,
       updatedAt: Date.now()
     });
-    showToast('Image removed');
+    showToast('Attachment removed');
     onClose();
   };
 
-  const handleReplaceImage = async (blob: Blob) => {
+  const handleReplaceAttachment = async (fileOrBlob: Blob, originalName?: string) => {
     try {
-      const res = await processImageBytes(blob, transaction.id, {
+      const fileName = originalName || (fileOrBlob instanceof File ? fileOrBlob.name : 'attachment');
+      const res = await processAttachmentBytes(fileOrBlob, fileName, transaction.id, {
         date: transaction.date,
         type: transaction.type,
         amountMinor: transaction.amountMinor,
-        title: transaction.title || 'receipt'
+        title: transaction.title || 'attachment'
       });
       updateTransaction(
         {
@@ -52,14 +110,61 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         },
         res.record
       );
-      showToast('Image replaced');
+      showToast('Attachment replaced');
       onClose();
     } catch {
-      showToast('Could not replace image');
+      showToast('Could not replace attachment');
+    }
+  };
+
+  const handleOpenWithApp = async () => {
+    if (!fullBlob) {
+      // Fallback to blobUrl
+      window.open(blobUrl, '_blank');
+      return;
+    }
+
+    try {
+      const ext = record?.fileType === 'pdf' ? 'pdf' : record?.fileType === 'excel' ? 'xlsx' : 'bin';
+      const cleanName = record?.fileName || `attachment_${transaction.id}.${ext}`;
+
+      if (Capacitor.isNativePlatform()) {
+        const b64 = await blobToBase64(fullBlob);
+        await Filesystem.writeFile({
+          directory: Directory.Cache,
+          path: cleanName,
+          data: b64
+        });
+
+        const uriRes = await Filesystem.getUri({
+          directory: Directory.Cache,
+          path: cleanName
+        });
+
+        await Share.share({
+          title: cleanName,
+          url: uriRes.uri,
+          dialogTitle: 'Open with phone app'
+        });
+      } else {
+        const url = URL.createObjectURL(fullBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = cleanName;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error('[Viewer] Open with app failed:', err);
+      showToast('Could not open file in external app');
     }
   };
 
   const isIncome = transaction.type === 'INCOME';
+  const fileType = record?.fileType || (record?.mime === 'application/pdf' ? 'pdf' : 'image');
 
   return (
     <div
@@ -82,71 +187,168 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0 12px',
-          backgroundColor: 'rgba(0, 0, 0, 0.4)',
-          borderBottom: '1px solid var(--color-outline)'
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          borderBottom: '1px solid var(--color-outline)',
+          flexShrink: 0
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
           <button
             onClick={onClose}
             aria-label="Back"
-            style={{ width: '44px', height: '44px', color: 'var(--color-text)', fontSize: '24px' }}
+            style={{ width: '44px', height: '44px', color: 'var(--color-text)', fontSize: '24px', flexShrink: 0 }}
           >
             <MdArrowBack />
           </button>
-          <div>
-            <div style={{ fontSize: '16px', fontWeight: 500, color: 'var(--color-text)' }}>
-              {transaction.title || 'Receipt Image'}
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: '15px', fontWeight: 500, color: 'var(--color-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {record?.originalName || transaction.title || 'Attachment'}
             </div>
-            <div style={{ fontSize: '13px', color: isIncome ? 'var(--color-income)' : 'var(--color-expense)' }}>
+            <div style={{ fontSize: '12px', color: isIncome ? 'var(--color-income)' : 'var(--color-expense)' }}>
               {formatMoney(transaction.amountMinor)} &nbsp;•&nbsp; {transaction.date}
             </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
           <button
-            onClick={() => setShowPhotoPicker(true)}
-            aria-label="Replace image"
-            style={{ width: '44px', height: '44px', color: 'var(--color-primary)', fontSize: '22px' }}
+            onClick={handleOpenWithApp}
+            title="Open in Phone App"
+            aria-label="Open in external app"
+            style={{ width: '40px', height: '40px', color: 'var(--color-primary)', fontSize: '22px' }}
           >
-            <MdPhotoCamera />
+            <MdOpenInNew />
+          </button>
+          <button
+            onClick={handleOpenWithApp}
+            title="Share"
+            aria-label="Share file"
+            style={{ width: '40px', height: '40px', color: 'var(--color-text)', fontSize: '20px' }}
+          >
+            <MdShare />
+          </button>
+          <button
+            onClick={() => setShowPicker(true)}
+            title="Replace Attachment"
+            aria-label="Replace attachment"
+            style={{ width: '40px', height: '40px', color: 'var(--color-primary)', fontSize: '22px' }}
+          >
+            <MdAttachFile />
           </button>
           <button
             onClick={() => setShowRemoveConfirm(true)}
-            aria-label="Remove image"
-            style={{ width: '44px', height: '44px', color: 'var(--color-expense)', fontSize: '22px' }}
+            title="Remove"
+            aria-label="Remove attachment"
+            style={{ width: '40px', height: '40px', color: 'var(--color-expense)', fontSize: '22px' }}
           >
             <MdDelete />
           </button>
         </div>
       </div>
 
-      {/* Main Image Area with Double Tap Zoom */}
+      {/* Main Content Area */}
       <div
-        onDoubleClick={handleDoubleTap}
         style={{
           flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           overflow: 'hidden',
           position: 'relative',
-          padding: '12px'
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: '#121212'
         }}
       >
-        <img
-          src={imageUrl}
-          alt={transaction.title || 'Receipt'}
-          style={{
-            maxWidth: '100%',
-            maxHeight: '100%',
-            objectFit: 'contain',
-            transform: `scale(${scale})`,
-            transition: 'transform 0.25s ease-out',
-            borderRadius: '8px'
-          }}
-        />
+        {fileType === 'pdf' ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <div style={{ padding: '8px 16px', backgroundColor: 'rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '13px', color: 'var(--color-text-dim)' }}>PDF Document Preview</span>
+              <button
+                onClick={handleOpenWithApp}
+                style={{ fontSize: '13px', color: 'var(--color-primary)', fontWeight: 500 }}
+              >
+                Open with phone PDF viewer
+              </button>
+            </div>
+            <iframe
+              src={blobUrl}
+              title="PDF Document"
+              style={{
+                width: '100%',
+                flex: 1,
+                border: 'none',
+                backgroundColor: '#ffffff'
+              }}
+            />
+          </div>
+        ) : fileType === 'excel' ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            <div style={{ padding: '8px 16px', backgroundColor: 'rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '13px', color: 'var(--color-text-dim)' }}>Spreadsheet Preview</span>
+              <button
+                onClick={handleOpenWithApp}
+                style={{ fontSize: '13px', color: 'var(--color-primary)', fontWeight: 500 }}
+              >
+                Open with Excel app
+              </button>
+            </div>
+            <div style={{ flex: 1, overflow: 'auto', padding: '8px' }}>
+              {excelRows && excelRows.length > 0 ? (
+                <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '12px', color: '#e0e0e0' }}>
+                  <tbody>
+                    {excelRows.map((row, rIdx) => (
+                      <tr key={rIdx} style={{ backgroundColor: rIdx === 0 ? 'rgba(255,255,255,0.1)' : rIdx % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'transparent' }}>
+                        {Array.isArray(row) &&
+                          row.map((cell, cIdx) => (
+                            <td
+                              key={cIdx}
+                              style={{
+                                border: '1px solid rgba(255,255,255,0.15)',
+                                padding: '6px 10px',
+                                whiteSpace: 'nowrap',
+                                fontWeight: rIdx === 0 ? 600 : 400
+                              }}
+                            >
+                              {cell !== undefined && cell !== null ? String(cell) : ''}
+                            </td>
+                          ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--color-text-dim)' }}>
+                  Loading spreadsheet data...
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* Standard Image Viewer with Double Tap Zoom */
+          <div
+            onDoubleClick={handleDoubleTap}
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              position: 'relative',
+              padding: '12px'
+            }}
+          >
+            <img
+              src={blobUrl}
+              alt={transaction.title || 'Attachment'}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain',
+                transform: `scale(${scale})`,
+                transition: 'transform 0.25s ease-out',
+                borderRadius: '8px'
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Details Footer Overlay */}
@@ -163,11 +365,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         </div>
       )}
 
-      {/* Replace Image Picker */}
-      {showPhotoPicker && (
+      {/* Replace Attachment Picker */}
+      {showPicker && (
         <PhotoPicker
-          onImagePicked={handleReplaceImage}
-          onClose={() => setShowPhotoPicker(false)}
+          onFilePicked={handleReplaceAttachment}
+          onImagePicked={(b) => handleReplaceAttachment(b, 'photo.jpg')}
+          onClose={() => setShowPicker(false)}
         />
       )}
 
@@ -197,10 +400,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             }}
           >
             <div style={{ fontSize: '17px', fontWeight: 500, color: 'var(--color-text)', marginBottom: '10px' }}>
-              Remove this image?
+              Remove this attachment?
             </div>
             <div style={{ fontSize: '14px', color: 'var(--color-text-dim)', marginBottom: '20px' }}>
-              The attached image will be detached from this transaction.
+              The attached file will be detached from this transaction.
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
               <button
