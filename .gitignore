@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+local.properties
+android/local.properties
+android/.gradle/
+android/app/build/
+android/build/
+keystore/keystore.properties
+*.log
+test-results/
+playwright-report/

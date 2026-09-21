@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Block cleartext traffic and disallow any domain traffic -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Do not trust user certificates -->
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

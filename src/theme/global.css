@@ -1,0 +1,122 @@
+@import '@fontsource/roboto/400.css';
+@import '@fontsource/roboto/500.css';
+@import '@fontsource/roboto/700.css';
+
+:root {
+  --color-bg: #0f1513;
+  --color-section: #252b29;
+  --color-accent-card: #354c44;
+  --color-sheet: #3f4a46;
+  --color-menu: #1e2624;
+  --color-search-bar: #323836;
+  --color-outline: #3f4946;
+  --color-segment-border: #6b7370;
+  --color-primary: #7fd6bc;
+  --color-primary-active: #86d6bd;
+  --color-fab: #005142;
+  --color-on-fab: #a2f2d9;
+  --color-on-primary: #00382c;
+  --color-text: #e0e3e1;
+  --color-text-dim: #bfc9c4;
+  --color-income: #7cdc7b;
+  --color-expense: #fb7a75;
+  --color-warning: #ffc107;
+  --color-handle: #c5cbc8;
+
+  /* Safe areas defaults with env fallback */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --kb-height: 0px;
+
+  --app-max-width: 600px;
+  --font-main: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-main);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Base app wrapper respecting safe areas and max-width on tablets */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  position: relative;
+  background-color: var(--color-bg);
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+  overflow: hidden;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-outline);
+  border-radius: 4px;
+}
+
+/* Buttons and touch elements */
+button {
+  font-family: inherit;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  outline: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+input, textarea {
+  font-family: inherit;
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Text styles */
+.text-dim {
+  color: var(--color-text-dim);
+}
+.text-income {
+  color: var(--color-income);
+}
+.text-expense {
+  color: var(--color-expense);
+}
+.text-primary {
+  color: var(--color-primary);
+}
