@@ -21,7 +21,8 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
   onImagePicked,
   onClose
 }) => {
-  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const pdfInputRef = useRef<HTMLInputElement | null>(null);
   const excelInputRef = useRef<HTMLInputElement | null>(null);
   const anyFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -35,57 +36,59 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
     onClose();
   };
 
-  const handleTakePhoto = async () => {
-    try {
-      if (Capacitor.isNativePlatform()) {
-        const photo = await Camera.getPhoto({
-          quality: 90,
-          allowEditing: false,
-          resultType: CameraResultType.Uri,
-          source: CameraSource.Camera,
-          saveToGallery: false
-        });
+  const handleTakePhoto = () => {
+    if (!Capacitor.isNativePlatform()) {
+      if (cameraInputRef.current) {
+        cameraInputRef.current.click();
+      }
+      return;
+    }
 
+    Camera.getPhoto({
+      quality: 90,
+      allowEditing: false,
+      resultType: CameraResultType.Uri,
+      source: CameraSource.Camera,
+      saveToGallery: false
+    })
+      .then(async (photo) => {
         if (photo.webPath) {
           const res = await fetch(photo.webPath);
           const blob = await res.blob();
           deliverFile(blob, 'camera_photo.jpg');
         }
-      } else {
-        if (photoInputRef.current) {
-          photoInputRef.current.click();
-        }
-      }
-    } catch (e) {
-      console.warn('[Camera] User cancelled or error:', e);
-      onClose();
-    }
+      })
+      .catch((e) => {
+        console.warn('[Camera] User cancelled or error:', e);
+        onClose();
+      });
   };
 
-  const handleChooseGallery = async () => {
-    try {
-      if (Capacitor.isNativePlatform()) {
-        const photo = await Camera.getPhoto({
-          quality: 90,
-          allowEditing: false,
-          resultType: CameraResultType.Uri,
-          source: CameraSource.Photos
-        });
+  const handleChooseGallery = () => {
+    if (!Capacitor.isNativePlatform()) {
+      if (galleryInputRef.current) {
+        galleryInputRef.current.click();
+      }
+      return;
+    }
 
+    Camera.getPhoto({
+      quality: 90,
+      allowEditing: false,
+      resultType: CameraResultType.Uri,
+      source: CameraSource.Photos
+    })
+      .then(async (photo) => {
         if (photo.webPath) {
           const res = await fetch(photo.webPath);
           const blob = await res.blob();
           deliverFile(blob, 'gallery_photo.jpg');
         }
-      } else {
-        if (photoInputRef.current) {
-          photoInputRef.current.click();
-        }
-      }
-    } catch (e) {
-      console.warn('[Gallery] User cancelled or error:', e);
-      onClose();
-    }
+      })
+      .catch((e) => {
+        console.warn('[Gallery] User cancelled or error:', e);
+        onClose();
+      });
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -112,7 +115,15 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
       {/* Hidden file inputs for distinct file filters */}
       <input
         type="file"
-        ref={photoInputRef}
+        ref={cameraInputRef}
+        accept="image/*"
+        capture="environment"
+        style={{ display: 'none' }}
+        onChange={handleInputChange}
+      />
+      <input
+        type="file"
+        ref={galleryInputRef}
         accept="image/*"
         style={{ display: 'none' }}
         onChange={handleInputChange}

@@ -28,22 +28,78 @@ export function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+// Helper for canvas to Blob with dataURL fallback
+async function canvasToBlobSafe(canvas: HTMLCanvasElement, mime: string, quality: number): Promise<Blob> {
+  return new Promise((resolve) => {
+    try {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          // DataURL fallback
+          try {
+            const dataUrl = canvas.toDataURL(mime, quality);
+            const byteString = atob(dataUrl.split(',')[1]);
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+            resolve(new Blob([ab], { type: mime }));
+          } catch {
+            resolve(new Blob([], { type: mime }));
+          }
+        }
+      }, mime, quality);
+    } catch {
+      try {
+        const dataUrl = canvas.toDataURL(mime, quality);
+        const byteString = atob(dataUrl.split(',')[1]);
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+        resolve(new Blob([ab], { type: mime }));
+      } catch {
+        resolve(new Blob([], { type: mime }));
+      }
+    }
+  });
+}
+
 // Process and compress image
 export async function processImageBytes(
   imageBlob: Blob,
   transactionId: string,
   txMeta: { date: string; type: string; amountMinor: number; title: string }
 ): Promise<ProcessedImageResult> {
-  // 1. Create ImageBitmap with EXIF orientation correction
-  let bitmap: ImageBitmap;
-  try {
-    bitmap = await createImageBitmap(imageBlob, { imageOrientation: 'from-image' });
-  } catch {
-    bitmap = await createImageBitmap(imageBlob);
-  }
+  let drawSource: ImageBitmap | HTMLImageElement;
+  let origWidth: number;
+  let origHeight: number;
 
-  const origWidth = bitmap.width;
-  const origHeight = bitmap.height;
+  try {
+    try {
+      drawSource = await createImageBitmap(imageBlob, { imageOrientation: 'from-image' });
+    } catch {
+      drawSource = await createImageBitmap(imageBlob);
+    }
+    origWidth = drawSource.width;
+    origHeight = drawSource.height;
+  } catch {
+    // Universal fallback via HTMLImageElement (works on every browser/device)
+    drawSource = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(imageBlob);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(img);
+      };
+      img.onerror = (err) => {
+        URL.revokeObjectURL(url);
+        reject(err);
+      };
+      img.src = url;
+    });
+    origWidth = drawSource.naturalWidth || drawSource.width || 800;
+    origHeight = drawSource.naturalHeight || drawSource.height || 600;
+  }
 
   // Max 1600px long edge
   let targetWidth = origWidth;
@@ -66,40 +122,29 @@ export async function processImageBytes(
   canvas.height = targetHeight;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Could not get 2d context for canvas');
-  ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+  ctx.drawImage(drawSource as CanvasImageSource, 0, 0, targetWidth, targetHeight);
 
   // Encode WebP or JPEG
   let mime: 'image/webp' | 'image/jpeg' = 'image/webp';
   let quality = 0.82;
-  let fullBlob: Blob | null = null;
+  let fullBlob = await canvasToBlobSafe(canvas, 'image/webp', quality);
 
-  try {
-    fullBlob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/webp', quality)
-    );
-  } catch {
-    // Fallback to JPEG
-  }
-
-  if (!fullBlob || fullBlob.type !== 'image/webp') {
+  if (!fullBlob || fullBlob.size === 0 || fullBlob.type !== 'image/webp') {
     mime = 'image/jpeg';
     quality = 0.85;
-    fullBlob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/jpeg', quality)
-    );
+    fullBlob = await canvasToBlobSafe(canvas, 'image/jpeg', quality);
   }
 
-  if (!fullBlob) {
-    throw new Error('Image compression failed to produce blob');
+  if (!fullBlob || fullBlob.size === 0) {
+    // Ultimate fallback to raw imageBlob
+    fullBlob = imageBlob;
   }
 
   // Step down quality if over 800KB
   if (fullBlob.size > 800 * 1024 && quality > 0.6) {
     quality = 0.7;
-    const smallerBlob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, mime, quality)
-    );
-    if (smallerBlob) {
+    const smallerBlob = await canvasToBlobSafe(canvas, mime, quality);
+    if (smallerBlob && smallerBlob.size > 0) {
       fullBlob = smallerBlob;
     }
   }
@@ -121,15 +166,22 @@ export async function processImageBytes(
   thumbCanvas.height = thumbHeight;
   const thumbCtx = thumbCanvas.getContext('2d');
   if (thumbCtx) {
-    thumbCtx.drawImage(bitmap, 0, 0, thumbWidth, thumbHeight);
+    thumbCtx.drawImage(drawSource as CanvasImageSource, 0, 0, thumbWidth, thumbHeight);
   }
 
-  const thumbnailBlob = await new Promise<Blob>((resolve) =>
-    thumbCanvas.toBlob((b) => resolve(b || fullBlob!), mime, 0.7)
-  );
+  let thumbnailBlob = await canvasToBlobSafe(thumbCanvas, mime, 0.7);
+  if (!thumbnailBlob || thumbnailBlob.size === 0) {
+    thumbnailBlob = fullBlob;
+  }
 
-  // Clean up bitmap
-  bitmap.close();
+  // Clean up bitmap if possible
+  if ('close' in drawSource && typeof (drawSource as any).close === 'function') {
+    try {
+      (drawSource as any).close();
+    } catch {
+      // Ignore
+    }
+  }
 
   // Compute sha256
   const arrayBuffer = await fullBlob.arrayBuffer();

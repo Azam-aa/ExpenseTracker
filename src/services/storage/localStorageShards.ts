@@ -38,10 +38,12 @@ export async function requestStoragePersistence(): Promise<boolean> {
   if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
     try {
       const persisted = await navigator.storage.persist();
-      console.log('[Storage] Persistent storage granted:', persisted);
+      if (persisted) {
+        console.log('[Storage] Persistent storage granted');
+      }
       return persisted;
-    } catch (e) {
-      console.warn('[Storage] Could not request persistence:', e);
+    } catch {
+      // Ignored in non-secure or restricted environments
     }
   }
   return false;
