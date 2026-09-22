@@ -27,13 +27,13 @@ export const HelpScreen: React.FC = () => {
     try {
       if (Capacitor.isNativePlatform()) {
         await Share.share({
-          title: 'Day to Day Expenses',
-          text: 'Day to Day Expenses - A private, completely offline expense tracker with receipt attachments and local safety backups.',
+          title: 'Daily Expenses',
+          text: 'Daily Expenses - A private, completely offline expense tracker with receipt attachments and local safety backups.',
           dialogTitle: 'Share App'
         });
       } else {
         await navigator.clipboard.writeText(
-          'Day to Day Expenses - 100% Offline Expense Tracker'
+          'Daily Expenses - 100% Offline Expense Tracker'
         );
         showToast('App info copied to clipboard');
       }
@@ -43,11 +43,8 @@ export const HelpScreen: React.FC = () => {
   };
 
   const handleContactUs = () => {
-    const email = 'support@daytodayexpenses.local';
-    window.location.href = `mailto:${email}?subject=Day%20to%20Day%20Expenses%20Support`;
-    setTimeout(() => {
-      showToast('Support email: support@daytodayexpenses.local');
-    }, 500);
+    window.location.href = 'tel:+919008713616';
+    showToast('Developer: Azam Pasha (+91-9008713616)');
   };
 
   const FAQ_ITEMS = [
@@ -205,10 +202,10 @@ export const HelpScreen: React.FC = () => {
           <MdFormatListNumbered size={28} color="var(--color-text-dim)" />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: '15px', fontWeight: 500, color: 'var(--color-text)' }}>
-              App Version
+              Daily Expenses v1.0.0
             </div>
             <div style={{ fontSize: '13px', color: 'var(--color-text-dim)', marginTop: '2px' }}>
-              Works fully offline. Nothing is sent anywhere.
+              Developer: Azam Pasha (+91-9008713616)
             </div>
           </div>
         </div>

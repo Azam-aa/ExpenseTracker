@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.personal.daytodayexpenses',
-  appName: 'Day to Day Expenses',
+  appName: 'Daily Expenses',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

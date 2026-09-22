@@ -1,6 +1,6 @@
-# Day to Day Expenses - Easy Android Installation Guide
+# Daily Expenses - Easy Android Installation Guide
 
-This guide will walk you through installing the **Day to Day Expenses** app onto your Android phone in just a few minutes. No technical background or special developer tools are needed.
+This guide will walk you through installing the **Daily Expenses** app onto your Android phone in just a few minutes. No technical background or special developer tools are needed.
 
 ---
 
@@ -13,7 +13,7 @@ E:\Delete this\ExpenseTracker\android\app\build\outputs\apk\release\app-release.
 ```
 
 - **File Name:** `app-release.apk`
-- **File Size:** Approximately **6.27 MB**
+- **File Size:** Approximately **6.42 MB**
 - **Type:** Signed Production Release APK
 
 ---

@@ -10,7 +10,9 @@ import {
   MdTableChart,
   MdGridView,
   MdSettings,
-  MdHelpOutline
+  MdHelpOutline,
+  MdPerson,
+  MdPhone
 } from 'react-icons/md';
 import { hashPin } from '../services/lock/pinLock';
 import { exportAccountStatementExcel } from '../services/export/excelExport';
@@ -274,6 +276,45 @@ export const SettingsScreen: React.FC = () => {
             </div>
             <div style={{ fontSize: '13px', color: 'var(--color-text-dim)', marginTop: '2px' }}>
               Help, contact us, privacy policy.
+            </div>
+          </div>
+        </div>
+
+        {/* 10. Developer Information */}
+        <div
+          data-testid="settings-developer-info"
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '16px',
+            padding: '16px 0',
+            borderTop: '1px solid var(--color-outline)',
+            marginTop: '8px'
+          }}
+        >
+          <MdPerson size={28} color="var(--color-primary)" style={{ marginTop: '2px', flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--color-text)' }}>
+              Developer Information
+            </div>
+            <div style={{ fontSize: '14px', color: 'var(--color-text)', marginTop: '4px', fontWeight: 500 }}>
+              Azam Pasha
+            </div>
+            <div style={{ fontSize: '14px', color: 'var(--color-primary)', marginTop: '4px' }}>
+              <a
+                href="tel:+919008713616"
+                style={{
+                  color: 'var(--color-primary)',
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 500
+                }}
+              >
+                <MdPhone size={16} />
+                +91-9008713616
+              </a>
             </div>
           </div>
         </div>
