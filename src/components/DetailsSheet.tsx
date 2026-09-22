@@ -125,7 +125,7 @@ export const DetailsSheet: React.FC<DetailsSheetProps> = ({
         ) : null}
 
         {/* Attachments Section with prominent View Document button */}
-        {attachments.length > 0 && (
+        {attIds.length > 0 && (
           <div
             style={{
               display: 'flex',
@@ -138,6 +138,7 @@ export const DetailsSheet: React.FC<DetailsSheetProps> = ({
             }}
           >
             <button
+              data-testid="view-document-btn"
               onClick={() => handleThumbClick(0, attIds[0])}
               style={{
                 width: '100%',
@@ -156,7 +157,7 @@ export const DetailsSheet: React.FC<DetailsSheetProps> = ({
               }}
             >
               <MdVisibility size={20} />
-              <span>View Document {attachments.length > 1 ? `(${attachments.length})` : ''}</span>
+              <span>View Document {attIds.length > 1 ? `(${attIds.length})` : ''}</span>
             </button>
 
             <div

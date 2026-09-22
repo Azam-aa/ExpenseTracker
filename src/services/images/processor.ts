@@ -70,160 +70,187 @@ export async function processImageBytes(
   transactionId: string,
   txMeta: { date: string; type: string; amountMinor: number; title: string }
 ): Promise<ProcessedImageResult> {
-  let drawSource: ImageBitmap | HTMLImageElement;
-  let origWidth: number;
-  let origHeight: number;
-
   try {
+    let drawSource: ImageBitmap | HTMLImageElement;
+    let origWidth: number = 800;
+    let origHeight: number = 600;
+
     try {
-      drawSource = await createImageBitmap(imageBlob, { imageOrientation: 'from-image' });
+      try {
+        drawSource = await createImageBitmap(imageBlob, { imageOrientation: 'from-image' });
+      } catch {
+        drawSource = await createImageBitmap(imageBlob);
+      }
+      origWidth = drawSource.width;
+      origHeight = drawSource.height;
     } catch {
-      drawSource = await createImageBitmap(imageBlob);
+      // Universal fallback via HTMLImageElement (works on every browser/device)
+      drawSource = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(imageBlob);
+        img.onload = () => {
+          resolve(img);
+        };
+        img.onerror = (err) => {
+          reject(err);
+        };
+        img.src = url;
+      });
+      origWidth = drawSource.naturalWidth || drawSource.width || 800;
+      origHeight = drawSource.naturalHeight || drawSource.height || 600;
     }
-    origWidth = drawSource.width;
-    origHeight = drawSource.height;
-  } catch {
-    // Universal fallback via HTMLImageElement (works on every browser/device)
-    drawSource = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(imageBlob);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        resolve(img);
-      };
-      img.onerror = (err) => {
-        URL.revokeObjectURL(url);
-        reject(err);
-      };
-      img.src = url;
-    });
-    origWidth = drawSource.naturalWidth || drawSource.width || 800;
-    origHeight = drawSource.naturalHeight || drawSource.height || 600;
-  }
 
-  // Max 1600px long edge
-  let targetWidth = origWidth;
-  let targetHeight = origHeight;
-  const maxDimension = 1600;
+    // 1. Constrain to 1280px max dimension
+    const maxDimension = 1280;
+    let targetWidth = origWidth;
+    let targetHeight = origHeight;
+    if (origWidth > maxDimension || origHeight > maxDimension) {
+      if (origWidth >= origHeight) {
+        targetWidth = maxDimension;
+        targetHeight = Math.round((origHeight * maxDimension) / origWidth);
+      } else {
+        targetHeight = maxDimension;
+        targetWidth = Math.round((origWidth * maxDimension) / origHeight);
+      }
+    }
 
-  if (origWidth > maxDimension || origHeight > maxDimension) {
+    // Draw on canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not get 2d context for canvas');
+    ctx.drawImage(drawSource as CanvasImageSource, 0, 0, targetWidth, targetHeight);
+
+    // Encode WebP or JPEG
+    let mime: 'image/webp' | 'image/jpeg' = 'image/webp';
+    let quality = 0.82;
+    let fullBlob = await canvasToBlobSafe(canvas, 'image/webp', quality);
+
+    if (!fullBlob || fullBlob.size === 0 || fullBlob.type !== 'image/webp') {
+      mime = 'image/jpeg';
+      quality = 0.85;
+      fullBlob = await canvasToBlobSafe(canvas, 'image/jpeg', quality);
+    }
+
+    if (!fullBlob || fullBlob.size === 0) {
+      // Ultimate fallback to raw imageBlob
+      fullBlob = imageBlob;
+    }
+
+    // Step down quality if over 800KB
+    if (fullBlob.size > 800 * 1024 && quality > 0.6) {
+      quality = 0.7;
+      const smallerBlob = await canvasToBlobSafe(canvas, mime, quality);
+      if (smallerBlob && smallerBlob.size > 0) {
+        fullBlob = smallerBlob;
+      }
+    }
+
+    // 2. Create 320px thumbnail
+    const thumbMax = 320;
+    let thumbWidth = origWidth;
+    let thumbHeight = origHeight;
     if (origWidth >= origHeight) {
-      targetWidth = maxDimension;
-      targetHeight = Math.round((origHeight * maxDimension) / origWidth);
+      thumbWidth = thumbMax;
+      thumbHeight = Math.round((origHeight * thumbMax) / origWidth);
     } else {
-      targetHeight = maxDimension;
-      targetWidth = Math.round((origWidth * maxDimension) / origHeight);
+      thumbHeight = thumbMax;
+      thumbWidth = Math.round((origWidth * thumbMax) / origHeight);
     }
-  }
 
-  // Draw on canvas
-  const canvas = document.createElement('canvas');
-  canvas.width = targetWidth;
-  canvas.height = targetHeight;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Could not get 2d context for canvas');
-  ctx.drawImage(drawSource as CanvasImageSource, 0, 0, targetWidth, targetHeight);
-
-  // Encode WebP or JPEG
-  let mime: 'image/webp' | 'image/jpeg' = 'image/webp';
-  let quality = 0.82;
-  let fullBlob = await canvasToBlobSafe(canvas, 'image/webp', quality);
-
-  if (!fullBlob || fullBlob.size === 0 || fullBlob.type !== 'image/webp') {
-    mime = 'image/jpeg';
-    quality = 0.85;
-    fullBlob = await canvasToBlobSafe(canvas, 'image/jpeg', quality);
-  }
-
-  if (!fullBlob || fullBlob.size === 0) {
-    // Ultimate fallback to raw imageBlob
-    fullBlob = imageBlob;
-  }
-
-  // Step down quality if over 800KB
-  if (fullBlob.size > 800 * 1024 && quality > 0.6) {
-    quality = 0.7;
-    const smallerBlob = await canvasToBlobSafe(canvas, mime, quality);
-    if (smallerBlob && smallerBlob.size > 0) {
-      fullBlob = smallerBlob;
+    const thumbCanvas = document.createElement('canvas');
+    thumbCanvas.width = thumbWidth;
+    thumbCanvas.height = thumbHeight;
+    const thumbCtx = thumbCanvas.getContext('2d');
+    if (thumbCtx) {
+      thumbCtx.drawImage(drawSource as CanvasImageSource, 0, 0, thumbWidth, thumbHeight);
     }
-  }
 
-  // 2. Create 320px thumbnail
-  const thumbMax = 320;
-  let thumbWidth = origWidth;
-  let thumbHeight = origHeight;
-  if (origWidth >= origHeight) {
-    thumbWidth = thumbMax;
-    thumbHeight = Math.round((origHeight * thumbMax) / origWidth);
-  } else {
-    thumbHeight = thumbMax;
-    thumbWidth = Math.round((origWidth * thumbMax) / origHeight);
-  }
+    let thumbnailBlob = await canvasToBlobSafe(thumbCanvas, mime, 0.7);
+    if (!thumbnailBlob || thumbnailBlob.size === 0) {
+      thumbnailBlob = fullBlob;
+    }
 
-  const thumbCanvas = document.createElement('canvas');
-  thumbCanvas.width = thumbWidth;
-  thumbCanvas.height = thumbHeight;
-  const thumbCtx = thumbCanvas.getContext('2d');
-  if (thumbCtx) {
-    thumbCtx.drawImage(drawSource as CanvasImageSource, 0, 0, thumbWidth, thumbHeight);
-  }
+    // Clean up bitmap if possible
+    if ('close' in drawSource && typeof (drawSource as any).close === 'function') {
+      try {
+        (drawSource as any).close();
+      } catch {
+        // Ignore
+      }
+    }
 
-  let thumbnailBlob = await canvasToBlobSafe(thumbCanvas, mime, 0.7);
-  if (!thumbnailBlob || thumbnailBlob.size === 0) {
-    thumbnailBlob = fullBlob;
-  }
+    // Compute sha256
+    const arrayBuffer = await fullBlob.arrayBuffer();
+    const sha256 = await computeSha256(arrayBuffer);
 
-  // Clean up bitmap if possible
-  if ('close' in drawSource && typeof (drawSource as any).close === 'function') {
+    const cleanTitle = (txMeta.title || 'untitled')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .slice(0, 16);
+    const ext = mime === 'image/webp' ? 'webp' : 'jpg';
+    const fileName = `${txMeta.date}_${txMeta.type.toLowerCase()}_${txMeta.amountMinor}_${cleanTitle}_${sha256.slice(0, 8)}.${ext}`;
+
+    const imageId = `img_${sha256.slice(0, 16)}`;
+
+    const record: ImageRecord = {
+      id: imageId,
+      transactionId,
+      mime,
+      width: targetWidth,
+      height: targetHeight,
+      bytes: fullBlob.size,
+      fileName,
+      sha256,
+      createdAt: Date.now()
+    };
+
+    const b64 = await blobToBase64(fullBlob);
+    const thumbB64 = await blobToBase64(thumbnailBlob);
+    const dataUrl = `data:${mime};base64,${b64}`;
+    const thumbnailDataUrl = `data:${mime};base64,${thumbB64}`;
+
+    // Store in IndexedDB
+    await storeImageInIdb(record, fullBlob, thumbnailBlob, thumbnailDataUrl, dataUrl);
+
+    // Store in Visible Folder (non-blocking for web/native)
     try {
-      (drawSource as any).close();
-    } catch {
-      // Ignore
+      await appFolder.saveImageFile(fileName, b64);
+    } catch (e) {
+      console.warn('[processor] Non-critical: appFolder.saveImageFile failed:', e);
     }
+
+    return {
+      record,
+      fullBlob,
+      thumbnailBlob
+    };
+  } catch (err) {
+    console.warn('[processor] Canvas processing encountered error, falling back to raw imageBlob:', err);
+    const arrayBuffer = await imageBlob.arrayBuffer();
+    const sha256 = await computeSha256(arrayBuffer);
+    const imageId = `img_${sha256.slice(0, 16)}`;
+    const record: ImageRecord = {
+      id: imageId,
+      transactionId,
+      mime: imageBlob.type || 'image/jpeg',
+      width: 800,
+      height: 600,
+      bytes: imageBlob.size,
+      fileName: `img_${sha256.slice(0, 8)}.jpg`,
+      sha256,
+      createdAt: Date.now()
+    };
+    try {
+      const b64 = await blobToBase64(imageBlob);
+      const dataUrl = `data:${record.mime};base64,${b64}`;
+      await storeImageInIdb(record, imageBlob, imageBlob, dataUrl, dataUrl);
+    } catch {
+      await storeImageInIdb(record, imageBlob, imageBlob);
+    }
+    return { record, fullBlob: imageBlob, thumbnailBlob: imageBlob };
   }
-
-  // Compute sha256
-  const arrayBuffer = await fullBlob.arrayBuffer();
-  const sha256 = await computeSha256(arrayBuffer);
-
-  const cleanTitle = (txMeta.title || 'untitled')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '')
-    .slice(0, 16);
-  const ext = mime === 'image/webp' ? 'webp' : 'jpg';
-  const fileName = `${txMeta.date}_${txMeta.type.toLowerCase()}_${txMeta.amountMinor}_${cleanTitle}_${sha256.slice(0, 8)}.${ext}`;
-
-  const imageId = `img_${sha256.slice(0, 16)}`;
-
-  const record: ImageRecord = {
-    id: imageId,
-    transactionId,
-    mime,
-    width: targetWidth,
-    height: targetHeight,
-    bytes: fullBlob.size,
-    fileName,
-    sha256,
-    createdAt: Date.now()
-  };
-
-  const b64 = await blobToBase64(fullBlob);
-  const thumbB64 = await blobToBase64(thumbnailBlob);
-  const dataUrl = `data:${mime};base64,${b64}`;
-  const thumbnailDataUrl = `data:${mime};base64,${thumbB64}`;
-
-  // Store in IndexedDB
-  await storeImageInIdb(record, fullBlob, thumbnailBlob, thumbnailDataUrl, dataUrl);
-
-  // Store in Visible Folder
-  await appFolder.saveImageFile(fileName, b64);
-
-  return {
-    record,
-    fullBlob,
-    thumbnailBlob
-  };
 }
 
 // Generate high quality canvas badge thumbnail for non-image attachments

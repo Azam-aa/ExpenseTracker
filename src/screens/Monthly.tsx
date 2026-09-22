@@ -9,6 +9,8 @@ import { parseDateInfo, formatMonthYear, getPrevMonth, getNextMonth } from '../u
 import { monthSummary, balanceEndOfDay, getActiveTransactions } from '../services/calc/engine';
 import { generateMonthlyPdf } from '../services/export/pdfReport';
 import { MdChevronLeft, MdChevronRight, MdPictureAsPdf, MdAttachFile } from 'react-icons/md';
+import { getTransactionAttachmentIds } from '../models/types';
+import { getImageFullUrl } from '../services/storage/indexedDbImages';
 
 export const MonthlyScreen: React.FC = () => {
   const {
@@ -19,6 +21,8 @@ export const MonthlyScreen: React.FC = () => {
     setSelectedMonth,
     openDetailsSheet,
     openEditSheet,
+    openViewer,
+    imageRecords,
     showToast
   } = useAppStore();
 
@@ -257,10 +261,15 @@ export const MonthlyScreen: React.FC = () => {
                         Income
                       </div>
 
-                      {dayIncomeTx.map((tx) => (
+                      {dayIncomeTx.map((tx) => {
+                        const attIds = getTransactionAttachmentIds(tx);
+                        return (
                         <div
                           key={tx.id}
-                          onClick={() => openDetailsSheet(tx)}
+                          data-testid="monthly-tx-row"
+                          onClick={() => {
+                            openDetailsSheet(tx);
+                          }}
                           onContextMenu={(e) => {
                             e.preventDefault();
                             openEditSheet(tx);
@@ -268,25 +277,54 @@ export const MonthlyScreen: React.FC = () => {
                           style={{
                             display: 'flex',
                             justifyContent: 'space-between',
-                            alignItems: 'flex-start',
-                            padding: '3px 0',
+                            alignItems: 'center',
+                            padding: '4px 0',
                             fontSize: '14px',
                             cursor: 'pointer'
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
-                            <span style={{ color: 'var(--color-text)' }}>
-                              {tx.title || 'Untitled'}
-                            </span>
-                            {tx.imageId && (
-                              <MdAttachFile size={16} color="var(--color-primary)" />
-                            )}
-                          </div>
-                          <span style={{ color: 'var(--color-text)', marginLeft: '6px' }}>
-                            {formatTableCell(tx.amountMinor)}
+                          <span style={{ color: 'var(--color-text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {tx.title || 'Untitled'}
                           </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px', flexShrink: 0 }}>
+                            {attIds.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const fullUrl = await getImageFullUrl(attIds[0]);
+                                  const rec = imageRecords[attIds[0]];
+                                  if (fullUrl) {
+                                    openViewer(fullUrl, tx, rec, 0, attIds);
+                                  }
+                                }}
+                                aria-label="View attachment"
+                                title="View attachment"
+                                style={{
+                                  background: 'rgba(23, 162, 184, 0.18)',
+                                  border: '1px solid var(--color-primary)',
+                                  borderRadius: '6px',
+                                  padding: '2px 4px',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '2px',
+                                  color: 'var(--color-primary)',
+                                  fontSize: '11px',
+                                  fontWeight: 600
+                                }}
+                              >
+                                <MdAttachFile size={14} />
+                                {attIds.length > 1 && <span>{attIds.length}</span>}
+                              </button>
+                            )}
+                            <span style={{ color: 'var(--color-text)' }}>
+                              {formatTableCell(tx.amountMinor)}
+                            </span>
+                          </div>
                         </div>
-                      ))}
+                        );
+                      })}
 
                       {/* Income Column Total */}
                       {dayIncomeTx.length > 0 && (
@@ -318,10 +356,15 @@ export const MonthlyScreen: React.FC = () => {
                         Expense
                       </div>
 
-                      {dayExpenseTx.map((tx) => (
+                      {dayExpenseTx.map((tx) => {
+                        const attIds = getTransactionAttachmentIds(tx);
+                        return (
                         <div
                           key={tx.id}
-                          onClick={() => openDetailsSheet(tx)}
+                          data-testid="monthly-tx-row"
+                          onClick={() => {
+                            openDetailsSheet(tx);
+                          }}
                           onContextMenu={(e) => {
                             e.preventDefault();
                             openEditSheet(tx);
@@ -329,25 +372,54 @@ export const MonthlyScreen: React.FC = () => {
                           style={{
                             display: 'flex',
                             justifyContent: 'space-between',
-                            alignItems: 'flex-start',
-                            padding: '3px 0',
+                            alignItems: 'center',
+                            padding: '4px 0',
                             fontSize: '14px',
                             cursor: 'pointer'
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
-                            <span style={{ color: 'var(--color-text)' }}>
-                              {tx.title || 'Untitled'}
-                            </span>
-                            {tx.imageId && (
-                              <MdAttachFile size={16} color="var(--color-primary)" />
-                            )}
-                          </div>
-                          <span style={{ color: 'var(--color-text)', marginLeft: '6px' }}>
-                            {formatTableCell(tx.amountMinor)}
+                          <span style={{ color: 'var(--color-text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {tx.title || 'Untitled'}
                           </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px', flexShrink: 0 }}>
+                            {attIds.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const fullUrl = await getImageFullUrl(attIds[0]);
+                                  const rec = imageRecords[attIds[0]];
+                                  if (fullUrl) {
+                                    openViewer(fullUrl, tx, rec, 0, attIds);
+                                  }
+                                }}
+                                aria-label="View attachment"
+                                title="View attachment"
+                                style={{
+                                  background: 'rgba(23, 162, 184, 0.18)',
+                                  border: '1px solid var(--color-primary)',
+                                  borderRadius: '6px',
+                                  padding: '2px 4px',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '2px',
+                                  color: 'var(--color-primary)',
+                                  fontSize: '11px',
+                                  fontWeight: 600
+                                }}
+                              >
+                                <MdAttachFile size={14} />
+                                {attIds.length > 1 && <span>{attIds.length}</span>}
+                              </button>
+                            )}
+                            <span style={{ color: 'var(--color-text)' }}>
+                              {formatTableCell(tx.amountMinor)}
+                            </span>
+                          </div>
                         </div>
-                      ))}
+                        );
+                      })}
 
                       {/* Expense Column Total */}
                       {dayExpenseTx.length > 0 && (

@@ -1,35 +1,20 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { MdPictureAsPdf, MdAttachFile } from 'react-icons/md';
+import React, { useRef } from 'react';
+import { MdAttachFile } from 'react-icons/md';
 import { Transaction, getTransactionAttachmentIds } from '../models/types';
 import { formatMoney } from '../utils/money';
 import { useAppStore } from '../store/useAppStore';
-import { getImageFullUrl, getMultipleThumbnails } from '../services/storage/indexedDbImages';
+import { getImageFullUrl } from '../services/storage/indexedDbImages';
 
 interface TxRowProps {
   transaction: Transaction;
 }
 
 export const TxRow: React.FC<TxRowProps> = ({ transaction }) => {
-  const { openEditSheet, openViewer, imageRecords } = useAppStore();
+  const { openEditSheet, openDetailsSheet, openViewer, imageRecords } = useAppStore();
   const timerRef = useRef<number | null>(null);
   const isLongPress = useRef(false);
-  const [attachments, setAttachments] = useState<Array<{ id: string; url: string }>>([]);
 
   const attIds = getTransactionAttachmentIds(transaction);
-
-  useEffect(() => {
-    let active = true;
-    if (attIds.length > 0) {
-      getMultipleThumbnails(attIds).then((items) => {
-        if (active) setAttachments(items);
-      });
-    } else {
-      setAttachments([]);
-    }
-    return () => {
-      active = false;
-    };
-  }, [transaction.imageId, JSON.stringify(transaction.attachmentIds)]);
 
   const handleTouchStart = () => {
     isLongPress.current = false;
@@ -48,16 +33,15 @@ export const TxRow: React.FC<TxRowProps> = ({ transaction }) => {
 
   const handleClick = () => {
     if (isLongPress.current) return;
-    openEditSheet(transaction);
+    openDetailsSheet(transaction);
   };
 
   const handleAttachmentClick = async (e: React.MouseEvent, index: number, id: string) => {
     e.stopPropagation();
     const fullUrl = await getImageFullUrl(id);
     const rec = imageRecords[id];
-    const targetUrl = fullUrl || attachments[index]?.url;
-    if (targetUrl) {
-      openViewer(targetUrl, transaction, rec, index, attIds);
+    if (fullUrl) {
+      openViewer(fullUrl, transaction, rec, index, attIds);
     }
   };
 
@@ -65,6 +49,7 @@ export const TxRow: React.FC<TxRowProps> = ({ transaction }) => {
 
   return (
     <div
+      data-testid="tx-row"
       onClick={handleClick}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -112,78 +97,6 @@ export const TxRow: React.FC<TxRowProps> = ({ transaction }) => {
             {transaction.description}
           </span>
         ) : null}
-
-        {/* Inline Image / Attachment Strip: Visible directly on the entry */}
-        {attachments.length > 0 && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              marginTop: '8px',
-              overflowX: 'auto',
-              scrollbarWidth: 'none',
-              paddingBottom: '2px'
-            }}
-          >
-            {attachments.map((item, idx) => {
-              const rec = imageRecords[item.id];
-              const isPdf = rec?.fileType === 'pdf' || rec?.fileName?.toLowerCase().endsWith('.pdf');
-              return (
-                <div
-                  key={`${item.id}-${idx}`}
-                  onClick={(e) => handleAttachmentClick(e, idx, item.id)}
-                  role="button"
-                  aria-label={`View attachment ${idx + 1}`}
-                  style={{
-                    width: '46px',
-                    height: '46px',
-                    borderRadius: '8px',
-                    overflow: 'hidden',
-                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                    border: '1.5px solid var(--color-primary)',
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                    position: 'relative',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                  }}
-                >
-                  {isPdf ? (
-                    <div
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#e53935'
-                      }}
-                    >
-                      <MdPictureAsPdf size={22} />
-                      <span style={{ fontSize: '8px', color: '#fff', fontWeight: 600 }}>PDF</span>
-                    </div>
-                  ) : (
-                    <img
-                      src={item.url}
-                      alt={`Receipt ${idx + 1}`}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      loading="lazy"
-                    />
-                  )}
-                </div>
-              );
-            })}
-            {attachments.length > 1 && (
-              <span style={{ fontSize: '11px', color: 'var(--color-primary)', fontWeight: 600, flexShrink: 0 }}>
-                {attachments.length} files
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '8px' }}>

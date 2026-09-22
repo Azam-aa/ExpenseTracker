@@ -10,6 +10,9 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    host: true
+    host: true,
+    watch: {
+      ignored: ['**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.webp', '**/*.pdf', '**/scratch/**', '**/tests/**', '**/*.apk', '**/*.tmp']
+    }
   }
 });

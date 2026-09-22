@@ -19,6 +19,7 @@ import { PhotoPicker } from './PhotoPicker';
 import { processAttachmentBytes } from '../services/images/processor';
 import { getImageThumbnailUrl, getImageFromIdb } from '../services/storage/indexedDbImages';
 import { saveDraft, loadDraft, clearDraft } from '../services/storage/localStorageShards';
+import { Capacitor } from '@capacitor/core';
 
 export interface AttachedItem {
   id: string;
@@ -76,6 +77,8 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
 
   // Multi-attachment state
   const [attachedItems, setAttachedItems] = useState<AttachedItem[]>([]);
+  const attachedItemsRef = useRef<AttachedItem[]>([]);
+  attachedItemsRef.current = attachedItems;
 
   // Sub-pickers
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
@@ -85,6 +88,7 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
   const draftTimerRef = useRef<number | null>(null);
   const inFlightPromisesRef = useRef<Map<string, Promise<ImageRecord | null>>>(new Map());
   const assignedTxIdRef = useRef<string>(editingTransaction ? editingTransaction.id : generateId());
+  const directFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Handle switching Income/Expense
   const handleTypeChange = (newType: TxType) => {
@@ -115,6 +119,7 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
           })
         ).then((items) => {
           const valid = items.filter((it): it is AttachedItem => it !== null);
+          attachedItemsRef.current = valid;
           setAttachedItems(valid);
         });
       }
@@ -167,7 +172,8 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
       isProcessing: true
     };
 
-    setAttachedItems((prev) => [...prev, newItem]);
+    attachedItemsRef.current = [...attachedItemsRef.current, newItem];
+    setAttachedItems([...attachedItemsRef.current]);
 
     const txId = assignedTxIdRef.current;
     const promise = (async () => {
@@ -180,24 +186,24 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
           title: title.trim() || 'attachment'
         });
 
-        setAttachedItems((prev) =>
-          prev.map((it) =>
-            it.id === tempId
-              ? {
-                  ...it,
-                  id: res.record.id,
-                  record: res.record,
-                  url: res.thumbnailBlob ? URL.createObjectURL(res.thumbnailBlob) : it.url,
-                  isProcessing: false
-                }
-              : it
-          )
+        attachedItemsRef.current = attachedItemsRef.current.map((it) =>
+          it.id === tempId
+            ? {
+                ...it,
+                id: res.record.id,
+                record: res.record,
+                url: res.thumbnailBlob ? URL.createObjectURL(res.thumbnailBlob) : it.url,
+                isProcessing: false
+              }
+            : it
         );
+        setAttachedItems([...attachedItemsRef.current]);
         return res.record;
       } catch (e) {
         console.error('[AddEditSheet] Attachment processing failed:', e);
         showToast('Could not attach file');
-        setAttachedItems((prev) => prev.filter((it) => it.id !== tempId));
+        attachedItemsRef.current = attachedItemsRef.current.filter((it) => it.id !== tempId);
+        setAttachedItems([...attachedItemsRef.current]);
         return null;
       } finally {
         inFlightPromisesRef.current.delete(tempId);
@@ -216,11 +222,19 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
   };
 
   const handleRemoveAttachment = (idToRemove: string) => {
-    setAttachedItems((prev) => prev.filter((it) => it.id !== idToRemove));
+    attachedItemsRef.current = attachedItemsRef.current.filter((it) => it.id !== idToRemove);
+    setAttachedItems([...attachedItemsRef.current]);
     inFlightPromisesRef.current.delete(idToRemove);
   };
 
-  const handleOpenPhotoPicker = () => {
+  const handleOpenPhotoPicker = (e?: React.MouseEvent) => {
+    if (!Capacitor.isNativePlatform()) {
+      if (directFileInputRef.current && (e?.target as HTMLElement)?.tagName !== 'LABEL') {
+        directFileInputRef.current.click();
+      }
+      return;
+    }
+    if (e) e.preventDefault();
     setShowPhotoPicker(true);
   };
 
@@ -232,15 +246,40 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
     }
     setValidationError(null);
 
-    // Wait for in-flight image processing if user saved quickly
+    // 1. Wait for in-flight image processing if user saved quickly
     if (inFlightPromisesRef.current.size > 0) {
       await Promise.all(Array.from(inFlightPromisesRef.current.values()));
     }
 
+    const currentItems = attachedItemsRef.current;
+
+    // 2. Emergency safeguard: Process any attachment that is still pending or missing record
+    for (const item of currentItems) {
+      if ((!item.record || item.id.startsWith('temp_')) && item.blob) {
+        try {
+          console.log('[AddEditSheet] Running emergency processor on save for item:', item.name);
+          const res = await processAttachmentBytes(item.blob, item.name, assignedTxIdRef.current, {
+            date,
+            type,
+            amountMinor: minor,
+            title: title.trim() || 'attachment'
+          });
+          item.id = res.record.id;
+          item.record = res.record;
+        } catch (err) {
+          console.error('[AddEditSheet] Emergency attachment save failed:', err);
+        }
+      }
+    }
+
     const now = Date.now();
-    const finalAttachmentIds = attachedItems.map((it) => it.id).filter((id) => !id.startsWith('temp_'));
+    const finalAttachmentIds = currentItems
+      .map((it) => it.id)
+      .filter((id) => !id.startsWith('temp_'));
     const finalImageId = finalAttachmentIds.length > 0 ? finalAttachmentIds[0] : null;
-    const recordsToSave = attachedItems.map((it) => it.record).filter((r): r is ImageRecord => Boolean(r));
+    const recordsToSave = currentItems
+      .map((it) => it.record)
+      .filter((r): r is ImageRecord => Boolean(r));
 
     if (isEdit && editingTransaction) {
       const updatedTx: Transaction = {
@@ -725,8 +764,8 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
               </div>
             </div>
           ) : (
-            <button
-              type="button"
+            <label
+              htmlFor="direct-file-input"
               onClick={handleOpenPhotoPicker}
               style={{
                 display: 'flex',
@@ -740,12 +779,13 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
                 border: '1px dashed var(--color-outline)',
                 fontWeight: 500,
                 width: '100%',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                boxSizing: 'border-box'
               }}
             >
               <MdAttachFile size={22} color="var(--color-primary)" />
               <span>Attach Photo or Document</span>
-            </button>
+            </label>
           )}
         </div>
 
@@ -829,6 +869,31 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
             </button>
           </div>
         )}
+
+        {/* Direct file input for web/desktop */}
+        <input
+          type="file"
+          id="direct-file-input"
+          ref={directFileInputRef}
+          accept="image/*,application/pdf,.pdf"
+          multiple
+          data-testid="direct-file-input"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+            if (files.length > 1) {
+              const arr: Array<{ blob: Blob; name: string }> = [];
+              for (let i = 0; i < files.length; i++) {
+                arr.push({ blob: files[i], name: files[i].name });
+              }
+              handleMultiplePicked(arr);
+            } else {
+              handleSinglePicked(files[0], files[0].name);
+            }
+            e.target.value = '';
+          }}
+        />
 
         {/* Sub-pickers */}
 

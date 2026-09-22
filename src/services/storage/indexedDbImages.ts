@@ -11,7 +11,7 @@ interface ImageStoreEntry {
 }
 
 const DB_NAME = 'dte_images_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'images';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -24,6 +24,10 @@ function getDb(): Promise<IDBPDatabase> {
           db.createObjectStore(STORE_NAME, { keyPath: 'id' });
         }
       }
+    }).catch((err) => {
+      dbPromise = null;
+      console.error('[IndexedDB] Failed to open DB:', err);
+      throw err;
     });
   }
   return dbPromise;
@@ -36,15 +40,43 @@ export async function storeImageInIdb(
   thumbnailDataUrl?: string,
   dataUrl?: string
 ): Promise<void> {
-  const db = await getDb();
-  await db.put(STORE_NAME, {
+  const entry: Record<string, any> = {
     id: record.id,
     blob,
     thumbnailBlob,
-    thumbnailDataUrl,
-    dataUrl,
     record
-  });
+  };
+  if (thumbnailDataUrl) entry.thumbnailDataUrl = thumbnailDataUrl;
+  if (dataUrl) entry.dataUrl = dataUrl;
+
+  try {
+    const db = await getDb();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    if (store.keyPath) {
+      await store.put(entry);
+    } else {
+      await store.put(entry, record.id);
+    }
+    await tx.done;
+  } catch (err) {
+    console.error('[IndexedDB] storeImageInIdb idb wrapper failed, attempting raw IDB write:', err);
+    // Raw IDB fallback
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onsuccess = () => {
+        const rawDb = req.result;
+        const tx = rawDb.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const putReq = store.keyPath ? store.put(entry) : store.put(entry, record.id);
+        putReq.onsuccess = () => {
+          resolve();
+        };
+        putReq.onerror = () => reject(putReq.error);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
 }
 
 export async function getImageFromIdb(

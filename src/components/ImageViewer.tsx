@@ -403,6 +403,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             }}
           >
             <img
+              data-testid="viewer-main-image"
               src={blobUrl}
               alt={transaction.title || 'Attachment'}
               style={{
