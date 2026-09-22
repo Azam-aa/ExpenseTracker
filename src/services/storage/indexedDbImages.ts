@@ -5,6 +5,8 @@ interface ImageStoreEntry {
   id: string;
   blob: Blob;
   thumbnailBlob: Blob;
+  thumbnailDataUrl?: string;
+  dataUrl?: string;
   record: ImageRecord;
 }
 
@@ -30,20 +32,24 @@ function getDb(): Promise<IDBPDatabase> {
 export async function storeImageInIdb(
   record: ImageRecord,
   blob: Blob,
-  thumbnailBlob: Blob
+  thumbnailBlob: Blob,
+  thumbnailDataUrl?: string,
+  dataUrl?: string
 ): Promise<void> {
   const db = await getDb();
   await db.put(STORE_NAME, {
     id: record.id,
     blob,
     thumbnailBlob,
+    thumbnailDataUrl,
+    dataUrl,
     record
   });
 }
 
 export async function getImageFromIdb(
   id: string
-): Promise<{ blob: Blob; thumbnailBlob: Blob; record: ImageRecord } | null> {
+): Promise<{ blob: Blob; thumbnailBlob: Blob; thumbnailDataUrl?: string; dataUrl?: string; record: ImageRecord } | null> {
   try {
     const db = await getDb();
     const entry = await db.get(STORE_NAME, id);
@@ -58,18 +64,32 @@ export async function getImageFromIdb(
 
 export async function getImageThumbnailUrl(id: string): Promise<string | null> {
   const data = await getImageFromIdb(id);
-  if (data && data.thumbnailBlob) {
-    return URL.createObjectURL(data.thumbnailBlob);
-  }
+  if (!data) return null;
+  if (data.thumbnailDataUrl) return data.thumbnailDataUrl;
+  if (data.thumbnailBlob) return URL.createObjectURL(data.thumbnailBlob);
+  if (data.dataUrl) return data.dataUrl;
+  if (data.blob) return URL.createObjectURL(data.blob);
   return null;
 }
 
 export async function getImageFullUrl(id: string): Promise<string | null> {
   const data = await getImageFromIdb(id);
-  if (data && data.blob) {
-    return URL.createObjectURL(data.blob);
-  }
+  if (!data) return null;
+  if (data.blob) return URL.createObjectURL(data.blob);
+  if (data.dataUrl) return data.dataUrl;
+  if (data.thumbnailDataUrl) return data.thumbnailDataUrl;
   return null;
+}
+
+export async function getMultipleThumbnails(ids: string[]): Promise<Array<{ id: string; url: string }>> {
+  if (!ids || ids.length === 0) return [];
+  const results = await Promise.all(
+    ids.map(async (id) => {
+      const url = await getImageThumbnailUrl(id);
+      return url ? { id, url } : null;
+    })
+  );
+  return results.filter((r): r is { id: string; url: string } => r !== null);
 }
 
 export async function deleteImageFromIdb(id: string): Promise<void> {

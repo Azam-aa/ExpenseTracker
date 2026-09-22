@@ -164,9 +164,7 @@ export const SearchScreen: React.FC = () => {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {results.map((tx) => {
-              const cat = categories.find((c) => c.id === tx.categoryId);
-              return (
+            {results.map((tx) => (
                 <div
                   key={tx.id}
                   onClick={() => openEditSheet(tx)}
@@ -183,7 +181,7 @@ export const SearchScreen: React.FC = () => {
                 >
                   <div style={{ flex: 1, marginRight: '10px' }}>
                     <div style={{ fontSize: '12px', color: 'var(--color-text-dim)' }}>
-                      {tx.date} &nbsp;•&nbsp; {cat?.name || 'Uncategorized'}
+                      {tx.date}
                     </div>
                     <div
                       style={{
@@ -218,7 +216,7 @@ export const SearchScreen: React.FC = () => {
                         onClick={async (e) => {
                           e.stopPropagation();
                           const url = await getImageFullUrl(tx.imageId!);
-                          if (url) openViewer(url, tx, imageRecords[tx.imageId!]);
+                          if (url) openViewer(url, tx, imageRecords[tx.imageId!], 0, [tx.imageId!]);
                         }}
                         aria-label="View attachment"
                         style={{
@@ -250,8 +248,7 @@ export const SearchScreen: React.FC = () => {
                     </span>
                   </div>
                 </div>
-              );
-            })}
+              ))}
           </div>
         )}
       </div>

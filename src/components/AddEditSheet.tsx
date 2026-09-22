@@ -5,19 +5,30 @@ import {
   MdOutlineModeEdit,
   MdAttachFile,
   MdDeleteOutline,
-  MdCategory,
-  MdVisibility
+  MdVisibility,
+  MdAdd,
+  MdClose,
+  MdPictureAsPdf
 } from 'react-icons/md';
-import { TxType, Transaction, ImageRecord } from '../models/types';
+import { TxType, Transaction, ImageRecord, getTransactionAttachmentIds } from '../models/types';
 import { useAppStore } from '../store/useAppStore';
 import { parseAmountToMinor, minorToInputValue } from '../utils/money';
 import { getTodayDateString, getCurrentTimeString } from '../utils/dates';
 import { generateId } from '../utils/ids';
-import { CategoryPicker, getCategoryIcon } from './CategoryPicker';
 import { PhotoPicker } from './PhotoPicker';
 import { processAttachmentBytes } from '../services/images/processor';
 import { getImageThumbnailUrl, getImageFromIdb } from '../services/storage/indexedDbImages';
 import { saveDraft, loadDraft, clearDraft } from '../services/storage/localStorageShards';
+
+export interface AttachedItem {
+  id: string;
+  url: string;
+  blob?: Blob;
+  record?: ImageRecord;
+  name: string;
+  fileType?: string;
+  isProcessing?: boolean;
+}
 
 interface AddEditSheetProps {
   onClose: () => void;
@@ -36,7 +47,6 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
     editingTransaction,
     selectedDate,
     settings,
-    categories,
     addTransaction,
     updateTransaction,
     deleteTransaction,
@@ -56,9 +66,7 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
   const [description, setDescription] = useState(
     editingTransaction ? editingTransaction.description : ''
   );
-  const [categoryId, setCategoryId] = useState<string | null>(
-    editingTransaction ? editingTransaction.categoryId : null
-  );
+
   const [date, setDate] = useState(
     editingTransaction ? editingTransaction.date : selectedDate || getTodayDateString()
   );
@@ -66,33 +74,50 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
     editingTransaction ? editingTransaction.time : getCurrentTimeString()
   );
 
-  // Image states
-  const [attachedImageBlob, setAttachedImageBlob] = useState<Blob | null>(null);
-  const [attachedThumbnailUrl, setAttachedThumbnailUrl] = useState<string | null>(null);
-  const [pendingImageRecord, setPendingImageRecord] = useState<ImageRecord | null>(null);
-  const [isProcessingImage, setIsProcessingImage] = useState(false);
+  // Multi-attachment state
+  const [attachedItems, setAttachedItems] = useState<AttachedItem[]>([]);
 
   // Sub-pickers
-  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const draftTimerRef = useRef<number | null>(null);
-  const processingPromiseRef = useRef<Promise<ImageRecord | null> | null>(null);
+  const inFlightPromisesRef = useRef<Map<string, Promise<ImageRecord | null>>>(new Map());
   const assignedTxIdRef = useRef<string>(editingTransaction ? editingTransaction.id : generateId());
+
+  // Handle switching Income/Expense
+  const handleTypeChange = (newType: TxType) => {
+    setType(newType);
+  };
 
   // Load existing thumbnail & record if editing
   useEffect(() => {
-    if (editingTransaction && editingTransaction.imageId) {
-      getImageThumbnailUrl(editingTransaction.imageId).then((url) => {
-        if (url) setAttachedThumbnailUrl(url);
-      });
-      getImageFromIdb(editingTransaction.imageId).then((entry) => {
-        if (entry && entry.record) {
-          setPendingImageRecord(entry.record);
-        }
-      });
+    if (editingTransaction) {
+      const attIds = getTransactionAttachmentIds(editingTransaction);
+      if (attIds.length > 0) {
+        Promise.all(
+          attIds.map(async (id) => {
+            const entry = await getImageFromIdb(id);
+            const thumbUrl = await getImageThumbnailUrl(id);
+            if (thumbUrl) {
+              return {
+                id,
+                url: thumbUrl,
+                blob: entry?.blob,
+                record: entry?.record,
+                name: entry?.record?.originalName || entry?.record?.fileName || 'Attachment',
+                fileType: entry?.record?.fileType || 'image',
+                isProcessing: false
+              } as AttachedItem;
+            }
+            return null;
+          })
+        ).then((items) => {
+          const valid = items.filter((it): it is AttachedItem => it !== null);
+          setAttachedItems(valid);
+        });
+      }
     } else if (!isEdit) {
       // Check for saved draft
       const draft = loadDraft<DraftData>();
@@ -101,7 +126,6 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
         setTitle(draft.title || '');
         setAmountStr(draft.amount || '');
         setDescription(draft.description || '');
-        setCategoryId(draft.categoryId || null);
       }
     }
   }, [editingTransaction, isEdit, settings.defaultType]);
@@ -112,13 +136,13 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
 
     draftTimerRef.current = window.setTimeout(() => {
-      if (title || amountStr || description || categoryId) {
+      if (title || amountStr || description) {
         saveDraft({
           type,
           title,
           amount: amountStr,
           description,
-          categoryId
+          categoryId: null
         });
       }
     }, 300);
@@ -126,14 +150,24 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
     return () => {
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     };
-  }, [type, title, amountStr, description, categoryId, isEdit]);
+  }, [type, title, amountStr, description, isEdit]);
 
-  const handleFilePicked = (blob: Blob, originalName?: string) => {
-    setIsProcessingImage(true);
-    setAttachedImageBlob(blob);
-    const fileName = originalName || (blob instanceof File ? blob.name : 'attachment');
+  const processAndAddFile = (blob: Blob, originalName?: string) => {
+    const fileName = originalName || (blob instanceof File ? blob.name : 'photo.jpg');
     const tempUrl = URL.createObjectURL(blob);
-    setAttachedThumbnailUrl(tempUrl);
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const isPdf = fileName.toLowerCase().endsWith('.pdf') || blob.type === 'application/pdf';
+
+    const newItem: AttachedItem = {
+      id: tempId,
+      url: tempUrl,
+      blob,
+      name: fileName,
+      fileType: isPdf ? 'pdf' : 'image',
+      isProcessing: true
+    };
+
+    setAttachedItems((prev) => [...prev, newItem]);
 
     const txId = assignedTxIdRef.current;
     const promise = (async () => {
@@ -145,35 +179,49 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
           amountMinor: amtMinor,
           title: title.trim() || 'attachment'
         });
-        setPendingImageRecord(res.record);
-        if (res.thumbnailBlob) {
-          const thumbUrl = URL.createObjectURL(res.thumbnailBlob);
-          setAttachedThumbnailUrl(thumbUrl);
-        }
+
+        setAttachedItems((prev) =>
+          prev.map((it) =>
+            it.id === tempId
+              ? {
+                  ...it,
+                  id: res.record.id,
+                  record: res.record,
+                  url: res.thumbnailBlob ? URL.createObjectURL(res.thumbnailBlob) : it.url,
+                  isProcessing: false
+                }
+              : it
+          )
+        );
         return res.record;
       } catch (e) {
         console.error('[AddEditSheet] Attachment processing failed:', e);
         showToast('Could not attach file');
+        setAttachedItems((prev) => prev.filter((it) => it.id !== tempId));
         return null;
       } finally {
-        setIsProcessingImage(false);
+        inFlightPromisesRef.current.delete(tempId);
       }
     })();
 
-    processingPromiseRef.current = promise;
-    return promise;
+    inFlightPromisesRef.current.set(tempId, promise);
   };
 
+  const handleMultiplePicked = (files: Array<{ blob: Blob; name: string }>) => {
+    files.forEach((f) => processAndAddFile(f.blob, f.name));
+  };
+
+  const handleSinglePicked = (file: File | Blob, name: string) => {
+    processAndAddFile(file, name);
+  };
+
+  const handleRemoveAttachment = (idToRemove: string) => {
+    setAttachedItems((prev) => prev.filter((it) => it.id !== idToRemove));
+    inFlightPromisesRef.current.delete(idToRemove);
+  };
 
   const handleOpenPhotoPicker = () => {
     setShowPhotoPicker(true);
-  };
-
-  const handleRemoveImage = () => {
-    setAttachedImageBlob(null);
-    setAttachedThumbnailUrl(null);
-    setPendingImageRecord(null);
-    processingPromiseRef.current = null;
   };
 
   const handleSave = async () => {
@@ -184,23 +232,15 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
     }
     setValidationError(null);
 
-    // Wait for in-flight image compression & storage if user saved quickly
-    let activeRecord = pendingImageRecord;
-    if (processingPromiseRef.current) {
-      setIsProcessingImage(true);
-      const res = await processingPromiseRef.current;
-      if (res) activeRecord = res;
-      setIsProcessingImage(false);
+    // Wait for in-flight image processing if user saved quickly
+    if (inFlightPromisesRef.current.size > 0) {
+      await Promise.all(Array.from(inFlightPromisesRef.current.values()));
     }
 
     const now = Date.now();
-    let finalImageId = editingTransaction ? editingTransaction.imageId : null;
-
-    if (activeRecord) {
-      finalImageId = activeRecord.id;
-    } else if (!attachedThumbnailUrl && !attachedImageBlob) {
-      finalImageId = null;
-    }
+    const finalAttachmentIds = attachedItems.map((it) => it.id).filter((id) => !id.startsWith('temp_'));
+    const finalImageId = finalAttachmentIds.length > 0 ? finalAttachmentIds[0] : null;
+    const recordsToSave = attachedItems.map((it) => it.record).filter((r): r is ImageRecord => Boolean(r));
 
     if (isEdit && editingTransaction) {
       const updatedTx: Transaction = {
@@ -209,13 +249,14 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
         title: title.trim() || 'Untitled',
         amountMinor: minor,
         description: description.trim(),
-        categoryId,
+        categoryId: null,
         date,
         time,
         updatedAt: now,
-        imageId: finalImageId
+        imageId: finalImageId,
+        attachmentIds: finalAttachmentIds
       };
-      updateTransaction(updatedTx, activeRecord || undefined);
+      updateTransaction(updatedTx, recordsToSave);
       showToast('Saved');
     } else {
       const newTx: Transaction = {
@@ -224,15 +265,16 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
         title: title.trim() || 'Untitled',
         amountMinor: minor,
         description: description.trim(),
-        categoryId,
+        categoryId: null,
         date,
         time,
         createdAt: now,
         updatedAt: now,
         imageId: finalImageId,
+        attachmentIds: finalAttachmentIds,
         deletedAt: null
       };
-      addTransaction(newTx, activeRecord || undefined);
+      addTransaction(newTx, recordsToSave);
       clearDraft();
       showToast('Added');
     }
@@ -247,8 +289,6 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
       onClose();
     }
   };
-
-  const currentCategory = categories.find((c) => c.id === categoryId);
 
   return (
     <div
@@ -313,7 +353,7 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
         >
           {/* Income Button */}
           <button
-            onClick={() => setType('INCOME')}
+            onClick={() => handleTypeChange('INCOME')}
             style={{
               flex: 1,
               height: '100%',
@@ -325,12 +365,12 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
             }}
           >
             {type === 'INCOME' && <MdCheck size={20} color="var(--color-primary)" />}
-            Income (Credit)
+            Income
           </button>
 
           {/* Expense Button */}
           <button
-            onClick={() => setType('EXPENSE')}
+            onClick={() => handleTypeChange('EXPENSE')}
             style={{
               flex: 1,
               height: '100%',
@@ -342,11 +382,11 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
             }}
           >
             {type === 'EXPENSE' && <MdCheck size={20} color="var(--color-primary)" />}
-            Expense (Debit)
+            Expense
           </button>
         </div>
 
-        {/* Row 2: Category Icon + Title + Amount + Mint Check Button */}
+        {/* Row 2: Title + Amount + Mint Check Button */}
         <div
           style={{
             display: 'flex',
@@ -356,24 +396,8 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
             minHeight: '48px'
           }}
         >
-          {/* Category Trigger Icon */}
-          <button
-            onClick={() => setShowCategoryPicker(true)}
-            aria-label="Select category"
-            style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '50%',
-              backgroundColor: currentCategory ? currentCategory.color : 'rgba(255, 255, 255, 0.1)',
-              color: '#ffffff',
-              flexShrink: 0
-            }}
-          >
-            {currentCategory ? getCategoryIcon(currentCategory.icon, 22) : <MdCategory size={22} />}
-          </button>
-
           {/* Title Field with prominent white line */}
-          <div style={{ flex: 1.2, position: 'relative' }}>
+          <div style={{ flex: 1.4, position: 'relative' }}>
             <input
               type="text"
               placeholder="Enter Text"
@@ -445,20 +469,19 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
           </button>
         </div>
 
-        {/* Row 3: Attachment (Photo, PDF, Excel, Document) - "First, keep the image" */}
+        {/* Row 3: Attachment (Photo, PDF) - "First, keep the image" */}
         <div
           style={{
             marginBottom: '16px',
             paddingLeft: '4px'
           }}
         >
-          {attachedThumbnailUrl ? (
+          {attachedItems.length > 0 ? (
             <div
               style={{
                 display: 'flex',
-                alignItems: 'center',
-                width: '100%',
-                gap: '12px',
+                flexDirection: 'column',
+                gap: '8px',
                 padding: '10px 12px',
                 borderRadius: '12px',
                 backgroundColor: 'rgba(255, 255, 255, 0.04)',
@@ -466,121 +489,238 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
               }}
             >
               <div
-                onClick={() => {
-                  openViewer(
-                    attachedThumbnailUrl,
-                    editingTransaction || {
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    const syntheticTx: Transaction = editingTransaction || {
                       id: assignedTxIdRef.current,
                       type,
                       title: title || 'Attachment Preview',
                       amountMinor: parseAmountToMinor(amountStr) || 0,
                       description: description || '',
-                      categoryId,
+                      categoryId: null,
                       date,
                       time,
                       createdAt: Date.now(),
                       updatedAt: Date.now(),
-                      imageId: pendingImageRecord ? pendingImageRecord.id : null,
+                      imageId: attachedItems[0].id,
+                      attachmentIds: attachedItems.map((a) => a.id),
                       deletedAt: null
-                    },
-                    pendingImageRecord || undefined
-                  );
-                }}
-                style={{
-                  position: 'relative',
-                  width: '54px',
-                  height: '54px',
-                  borderRadius: '10px',
-                  overflow: 'hidden',
-                  cursor: 'pointer',
-                  border: '1.5px solid var(--color-primary)',
-                  flexShrink: 0
-                }}
-              >
-                <img
-                  src={attachedThumbnailUrl}
-                  alt="Attachment thumbnail"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover'
+                    };
+                    openViewer(attachedItems[0].url, syntheticTx, attachedItems[0].record, 0, attachedItems.map((a) => a.id));
                   }}
-                />
-                <div
                   style={{
-                    position: 'absolute',
-                    inset: 0,
-                    backgroundColor: 'rgba(0,0,0,0.25)',
+                    flex: 1,
+                    height: '42px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    color: '#ffffff'
+                    gap: '8px',
+                    borderRadius: '10px',
+                    backgroundColor: 'rgba(23, 162, 184, 0.2)',
+                    border: '1.5px solid var(--color-primary)',
+                    color: 'var(--color-primary)',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
                   }}
                 >
-                  <MdVisibility size={18} />
-                </div>
-              </div>
+                  <MdVisibility size={20} />
+                  <span>View Document {attachedItems.length > 1 ? `(${attachedItems.length})` : ''}</span>
+                </button>
 
-              <div
-                style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
-                onClick={() => {
-                  openViewer(
-                    attachedThumbnailUrl,
-                    editingTransaction || {
-                      id: assignedTxIdRef.current,
-                      type,
-                      title: title || 'Attachment Preview',
-                      amountMinor: parseAmountToMinor(amountStr) || 0,
-                      description: description || '',
-                      categoryId,
-                      date,
-                      time,
-                      createdAt: Date.now(),
-                      updatedAt: Date.now(),
-                      imageId: pendingImageRecord ? pendingImageRecord.id : null,
-                      deletedAt: null
-                    },
-                    pendingImageRecord || undefined
-                  );
-                }}
-              >
-                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {pendingImageRecord?.originalName || (pendingImageRecord?.fileType ? `${pendingImageRecord.fileType.toUpperCase()} file` : 'Attachment')}
-                </div>
-                <div style={{ fontSize: '12px', color: 'var(--color-primary)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <MdVisibility size={14} />
-                  <span>{isProcessingImage ? 'Saving...' : 'Tap to view full screen'}</span>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                 <button
                   type="button"
                   onClick={handleOpenPhotoPicker}
+                  aria-label="Add more attachments"
                   style={{
-                    color: 'var(--color-primary)',
+                    height: '42px',
+                    padding: '0 12px',
+                    borderRadius: '10px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    color: 'var(--color-text)',
                     fontSize: '13px',
                     fontWeight: 500,
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    backgroundColor: 'rgba(23, 162, 184, 0.12)'
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    cursor: 'pointer'
                   }}
                 >
-                  Change
+                  <MdAdd size={16} color="var(--color-primary)" />
+                  <span>Add More</span>
                 </button>
+              </div>
+
+              {/* Horizontal Scrollable Thumbnails Strip */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  overflowX: 'auto',
+                  padding: '4px 2px 8px 2px',
+                  scrollbarWidth: 'none'
+                }}
+              >
+                {attachedItems.map((item, idx) => (
+                  <div
+                    key={`${item.id}-${idx}`}
+                    style={{
+                      position: 'relative',
+                      width: '64px',
+                      height: '64px',
+                      flexShrink: 0,
+                      borderRadius: '10px',
+                      overflow: 'hidden',
+                      border: '1.5px solid var(--color-primary)',
+                      backgroundColor: '#121212',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {item.fileType === 'pdf' ? (
+                      <div
+                        onClick={() => {
+                          const syntheticTx: Transaction = editingTransaction || {
+                            id: assignedTxIdRef.current,
+                            type,
+                            title: title || 'Attachment Preview',
+                            amountMinor: parseAmountToMinor(amountStr) || 0,
+                            description: description || '',
+                            categoryId: null,
+                            date,
+                            time,
+                            createdAt: Date.now(),
+                            updatedAt: Date.now(),
+                            imageId: item.id,
+                            attachmentIds: attachedItems.map((a) => a.id),
+                            deletedAt: null
+                          };
+                          openViewer(item.url, syntheticTx, item.record, idx, attachedItems.map((a) => a.id));
+                        }}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#e53935',
+                          fontSize: '10px'
+                        }}
+                      >
+                        <MdPictureAsPdf size={28} />
+                        <span style={{ color: '#fff', fontSize: '9px', marginTop: '2px', maxWidth: '56px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          PDF
+                        </span>
+                      </div>
+                    ) : (
+                      <img
+                        src={item.url}
+                        alt={item.name}
+                        onClick={() => {
+                          const syntheticTx: Transaction = editingTransaction || {
+                            id: assignedTxIdRef.current,
+                            type,
+                            title: title || 'Attachment Preview',
+                            amountMinor: parseAmountToMinor(amountStr) || 0,
+                            description: description || '',
+                            categoryId: null,
+                            date,
+                            time,
+                            createdAt: Date.now(),
+                            updatedAt: Date.now(),
+                            imageId: item.id,
+                            attachmentIds: attachedItems.map((a) => a.id),
+                            deletedAt: null
+                          };
+                          openViewer(item.url, syntheticTx, item.record, idx, attachedItems.map((a) => a.id));
+                        }}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover'
+                        }}
+                      />
+                    )}
+
+                    {/* Remove button (X) */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveAttachment(item.id);
+                      }}
+                      aria-label="Remove attachment"
+                      style={{
+                        position: 'absolute',
+                        top: '2px',
+                        right: '2px',
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                        color: '#ffffff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 0,
+                        border: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <MdClose size={14} />
+                    </button>
+
+                    {item.isProcessing && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          backgroundColor: 'rgba(0,0,0,0.6)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#fff',
+                          fontSize: '10px'
+                        }}
+                      >
+                        Saving...
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Card to add another item directly in strip */}
                 <button
                   type="button"
-                  onClick={handleRemoveImage}
+                  onClick={handleOpenPhotoPicker}
+                  aria-label="Add another attachment"
                   style={{
-                    color: 'var(--color-expense)',
-                    fontSize: '13px',
-                    fontWeight: 500,
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    backgroundColor: 'rgba(235, 87, 87, 0.12)'
+                    width: '64px',
+                    height: '64px',
+                    flexShrink: 0,
+                    borderRadius: '10px',
+                    border: '1.5px dashed var(--color-outline)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    color: 'var(--color-primary)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    cursor: 'pointer'
                   }}
                 >
-                  Remove
+                  <MdAdd size={22} />
+                  <span style={{ fontSize: '10px', fontWeight: 500 }}>Add</span>
                 </button>
               </div>
             </div>
@@ -604,7 +744,7 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
               }}
             >
               <MdAttachFile size={22} color="var(--color-primary)" />
-              <span>Add Attachment (Photo, PDF, Excel)</span>
+              <span>Attach Photo or Document</span>
             </button>
           )}
         </div>
@@ -691,22 +831,12 @@ export const AddEditSheet: React.FC<AddEditSheetProps> = ({ onClose }) => {
         )}
 
         {/* Sub-pickers */}
-        {showCategoryPicker && (
-          <CategoryPicker
-            type={type}
-            selectedCategoryId={categoryId}
-            onSelect={(id) => {
-              setCategoryId(id);
-              setShowCategoryPicker(false);
-            }}
-            onClose={() => setShowCategoryPicker(false)}
-          />
-        )}
 
         {showPhotoPicker && (
           <PhotoPicker
-            onFilePicked={handleFilePicked}
-            onImagePicked={(blob) => handleFilePicked(blob, 'photo.jpg')}
+            onFilePicked={handleSinglePicked}
+            onImagePicked={(blob) => handleSinglePicked(blob, 'photo.jpg')}
+            onMultiplePicked={handleMultiplePicked}
             onClose={() => setShowPhotoPicker(false)}
           />
         )}

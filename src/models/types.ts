@@ -11,8 +11,19 @@ export interface Transaction {
   time: string;            // 'HH:mm' local time
   createdAt: number;       // epoch ms
   updatedAt: number;
-  imageId: string | null;  // exactly one image or none
+  imageId: string | null;  // primary image / attachment (backward compatible)
+  attachmentIds?: string[]; // multiple attachments (2, 3 or more photos/documents)
   deletedAt: number | null;// soft delete epoch ms, purged after 30 days
+}
+
+export function getTransactionAttachmentIds(tx: Transaction): string[] {
+  if (tx.attachmentIds && Array.isArray(tx.attachmentIds) && tx.attachmentIds.length > 0) {
+    return tx.attachmentIds;
+  }
+  if (tx.imageId) {
+    return [tx.imageId];
+  }
+  return [];
 }
 
 export type AttachmentType = 'image' | 'pdf' | 'excel' | 'document';

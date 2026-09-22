@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Transaction } from '../models/types';
+import { Transaction, getTransactionAttachmentIds } from '../models/types';
 import { useAppStore } from '../store/useAppStore';
 import { formatMoney } from '../utils/money';
-import { getImageThumbnailUrl, getImageFullUrl } from '../services/storage/indexedDbImages';
-import { getCategoryIcon } from './CategoryPicker';
-import { MdClose, MdEdit } from 'react-icons/md';
+import { getImageFullUrl, getMultipleThumbnails } from '../services/storage/indexedDbImages';
+import { MdClose, MdEdit, MdPictureAsPdf, MdVisibility } from 'react-icons/md';
 
 interface DetailsSheetProps {
   transaction: Transaction;
@@ -17,30 +16,33 @@ export const DetailsSheet: React.FC<DetailsSheetProps> = ({
   onClose,
   onEdit
 }) => {
-  const { categories, openViewer } = useAppStore();
-  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  const { openViewer, imageRecords } = useAppStore();
+  const [attachments, setAttachments] = useState<Array<{ id: string; url: string }>>([]);
+
+  const attIds = getTransactionAttachmentIds(transaction);
 
   useEffect(() => {
-    if (transaction.imageId) {
-      getImageThumbnailUrl(transaction.imageId).then((url) => {
-        if (url) setThumbUrl(url);
+    let active = true;
+    if (attIds.length > 0) {
+      getMultipleThumbnails(attIds).then((items) => {
+        if (active) setAttachments(items);
       });
+    } else {
+      setAttachments([]);
     }
-  }, [transaction.imageId]);
+    return () => {
+      active = false;
+    };
+  }, [transaction.imageId, JSON.stringify(transaction.attachmentIds)]);
 
-  const category = categories.find((c) => c.id === transaction.categoryId);
   const isIncome = transaction.type === 'INCOME';
 
-  const handleThumbClick = async () => {
-    if (transaction.imageId) {
-      const fullUrl = await getImageFullUrl(transaction.imageId);
-      const { imageRecords } = useAppStore.getState();
-      const rec = imageRecords[transaction.imageId];
-      if (fullUrl) {
-        openViewer(fullUrl, transaction, rec);
-      } else if (thumbUrl) {
-        openViewer(thumbUrl, transaction, rec);
-      }
+  const handleThumbClick = async (index: number, id: string) => {
+    const fullUrl = await getImageFullUrl(id);
+    const rec = imageRecords[id];
+    const targetUrl = fullUrl || attachments[index]?.url;
+    if (targetUrl) {
+      openViewer(targetUrl, transaction, rec, index, attIds);
     }
   };
 
@@ -76,7 +78,7 @@ export const DetailsSheet: React.FC<DetailsSheetProps> = ({
           <span style={{ fontSize: '18px', fontWeight: 500, color: 'var(--color-text)' }}>
             Transaction Details
           </span>
-          <button onClick={onClose} style={{ color: 'var(--color-text-dim)', fontSize: '24px' }}>
+          <button onClick={onClose} aria-label="Close details" style={{ color: 'var(--color-text-dim)', fontSize: '24px' }}>
             <MdClose />
           </button>
         </div>
@@ -88,7 +90,7 @@ export const DetailsSheet: React.FC<DetailsSheetProps> = ({
               {transaction.title || 'Untitled'}
             </div>
             <div style={{ fontSize: '13px', color: 'var(--color-text-dim)', marginTop: '2px' }}>
-              {transaction.type === 'INCOME' ? 'Income (Credit)' : 'Expense (Debit)'}
+              {transaction.type === 'INCOME' ? 'Income' : 'Expense'}
             </div>
           </div>
           <div
@@ -107,27 +109,6 @@ export const DetailsSheet: React.FC<DetailsSheetProps> = ({
           {transaction.date} &nbsp;•&nbsp; {transaction.time}
         </div>
 
-        {/* Category */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div
-            style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '50%',
-              backgroundColor: category?.color || 'rgba(255,255,255,0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#ffffff'
-            }}
-          >
-            {category ? getCategoryIcon(category.icon, 18) : <MdClose size={18} />}
-          </div>
-          <span style={{ fontSize: '14px', color: 'var(--color-text)' }}>
-            {category?.name || 'Uncategorized'}
-          </span>
-        </div>
-
         {/* Description */}
         {transaction.description ? (
           <div
@@ -143,39 +124,101 @@ export const DetailsSheet: React.FC<DetailsSheetProps> = ({
           </div>
         ) : null}
 
-        {/* Image Thumbnail */}
-        {thumbUrl && (
+        {/* Attachments Section with prominent View Document button */}
+        {attachments.length > 0 && (
           <div
-            onClick={handleThumbClick}
             style={{
               display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              padding: '10px 12px',
+              flexDirection: 'column',
+              gap: '10px',
+              padding: '12px',
               borderRadius: '12px',
               backgroundColor: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid var(--color-primary)',
-              cursor: 'pointer'
+              border: '1px solid var(--color-primary)'
             }}
           >
-            <img
-              src={thumbUrl}
-              alt="Receipt"
+            <button
+              onClick={() => handleThumbClick(0, attIds[0])}
               style={{
-                width: '60px',
-                height: '60px',
-                borderRadius: '8px',
-                objectFit: 'cover',
-                border: '1px solid rgba(255, 255, 255, 0.2)'
+                width: '100%',
+                height: '44px',
+                borderRadius: '10px',
+                backgroundColor: 'rgba(23, 162, 184, 0.2)',
+                border: '1.5px solid var(--color-primary)',
+                color: 'var(--color-primary)',
+                fontSize: '14px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                cursor: 'pointer'
               }}
-            />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text)' }}>
-                Attached Document / Receipt
-              </div>
-              <div style={{ fontSize: '12px', color: 'var(--color-primary)', marginTop: '2px' }}>
-                Tap here to view full screen
-              </div>
+            >
+              <MdVisibility size={20} />
+              <span>View Document {attachments.length > 1 ? `(${attachments.length})` : ''}</span>
+            </button>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                overflowX: 'auto',
+                padding: '2px 0',
+                scrollbarWidth: 'none'
+              }}
+            >
+              {attachments.map((item, idx) => {
+                const rec = imageRecords[item.id];
+                const isPdf = rec?.fileType === 'pdf' || rec?.fileName?.toLowerCase().endsWith('.pdf');
+                return (
+                  <div
+                    key={`${item.id}-${idx}`}
+                    onClick={() => handleThumbClick(idx, item.id)}
+                    style={{
+                      width: '60px',
+                      height: '60px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: '1.5px solid var(--color-primary)',
+                      backgroundColor: '#121212',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    {isPdf ? (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#e53935'
+                        }}
+                      >
+                        <MdPictureAsPdf size={26} />
+                        <span style={{ fontSize: '8px', color: '#fff', fontWeight: 600 }}>PDF</span>
+                      </div>
+                    ) : (
+                      <img
+                        src={item.url}
+                        alt={`Attachment ${idx + 1}`}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover'
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

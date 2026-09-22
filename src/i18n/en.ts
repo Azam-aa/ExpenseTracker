@@ -14,13 +14,13 @@ export const en = {
   daily: {
     cf: 'C/F',
     balance: 'Balance',
-    incomeCredit: 'Income (Credit)',
-    expenseDebit: 'Expense (Debit)',
+    incomeCredit: 'Income',
+    expenseDebit: 'Expense',
     emptyHint: "Tap on '+' to add new item and long press an entry to edit."
   },
   addSheet: {
-    incomeCredit: 'Income (Credit)',
-    expenseDebit: 'Expense (Debit)',
+    incomeCredit: 'Income',
+    expenseDebit: 'Expense',
     enterText: 'Enter Text',
     amount: 'Amount',
     description: 'Description',
@@ -44,15 +44,15 @@ export const en = {
     cancel: 'Cancel'
   },
   monthly: {
-    totalIncome: 'Total Income (Credit)',
-    totalExpense: 'Total Expense (Debit)',
+    totalIncome: 'Total Income',
+    totalExpense: 'Total Expense',
     cf: 'C/F',
     balance: 'Balance',
     noTransactions: 'No transactions found.'
   },
   yearly: {
-    incomeCredit: 'Income (Credit)',
-    expenseDebit: 'Expense (Debit)',
+    incomeCredit: 'Income',
+    expenseDebit: 'Expense',
     balance: 'Balance',
     cf: 'C/F'
   },

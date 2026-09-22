@@ -181,6 +181,8 @@ export const App: React.FC = () => {
           imageUrl={viewerImage.url}
           transaction={viewerImage.transaction}
           imageRecord={viewerImage.imageRecord}
+          initialIndex={viewerImage.initialIndex}
+          allAttachmentIds={viewerImage.allAttachmentIds}
           onClose={closeViewer}
         />
       )}

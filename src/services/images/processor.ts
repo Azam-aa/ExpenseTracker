@@ -208,11 +208,15 @@ export async function processImageBytes(
     createdAt: Date.now()
   };
 
+  const b64 = await blobToBase64(fullBlob);
+  const thumbB64 = await blobToBase64(thumbnailBlob);
+  const dataUrl = `data:${mime};base64,${b64}`;
+  const thumbnailDataUrl = `data:${mime};base64,${thumbB64}`;
+
   // Store in IndexedDB
-  await storeImageInIdb(record, fullBlob, thumbnailBlob);
+  await storeImageInIdb(record, fullBlob, thumbnailBlob, thumbnailDataUrl, dataUrl);
 
   // Store in Visible Folder
-  const b64 = await blobToBase64(fullBlob);
   await appFolder.saveImageFile(fileName, b64);
 
   return {
@@ -340,11 +344,15 @@ export async function processAttachmentBytes(
     fileType
   };
 
+  const b64 = await blobToBase64(fileBlob);
+  const thumbB64 = await blobToBase64(thumbnailBlob);
+  const dataUrl = `data:${fileBlob.type || 'application/octet-stream'};base64,${b64}`;
+  const thumbnailDataUrl = `data:image/png;base64,${thumbB64}`;
+
   // Store in IndexedDB
-  await storeImageInIdb(record, fileBlob, thumbnailBlob);
+  await storeImageInIdb(record, fileBlob, thumbnailBlob, thumbnailDataUrl, dataUrl);
 
   // Store in Visible Folder
-  const b64 = await blobToBase64(fileBlob);
   await appFolder.saveImageFile(fileName, b64);
 
   return {

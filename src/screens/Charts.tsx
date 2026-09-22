@@ -293,7 +293,7 @@ export const ChartsScreen: React.FC = () => {
               }}
             >
               {selectedType === 'INCOME' && <MdCheck size={20} color="var(--color-primary)" />}
-              Income (Credit)
+              Income
             </button>
 
             <button
@@ -309,7 +309,7 @@ export const ChartsScreen: React.FC = () => {
               }}
             >
               {selectedType === 'EXPENSE' && <MdCheck size={20} color="var(--color-primary)" />}
-              Expense (Debit)
+              Expense
             </button>
           </div>
 
@@ -483,7 +483,7 @@ export const ChartsScreen: React.FC = () => {
                   backgroundColor: 'var(--color-income)'
                 }}
               />
-              <span style={{ fontSize: '13px', color: 'var(--color-text)' }}>Income (Credit)</span>
+              <span style={{ fontSize: '13px', color: 'var(--color-text)' }}>Income</span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -495,7 +495,7 @@ export const ChartsScreen: React.FC = () => {
                   backgroundColor: 'var(--color-expense)'
                 }}
               />
-              <span style={{ fontSize: '13px', color: 'var(--color-text)' }}>Expense (Debit)</span>
+              <span style={{ fontSize: '13px', color: 'var(--color-text)' }}>Expense</span>
             </div>
           </div>
         </div>

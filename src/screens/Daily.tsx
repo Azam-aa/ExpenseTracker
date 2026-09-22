@@ -64,8 +64,8 @@ export const DailyScreen: React.FC = () => {
           </span>
         </div>
 
-        {/* Income (Credit) Section */}
-        <SectionBar title="Income (Credit)" totalMinor={dayTotals.incomeMinor} />
+        {/* Income Section */}
+        <SectionBar title="Income" totalMinor={dayTotals.incomeMinor} />
         {incomeTx.length === 0 ? (
           <div
             style={{
@@ -85,8 +85,8 @@ export const DailyScreen: React.FC = () => {
           </div>
         )}
 
-        {/* Expense (Debit) Section */}
-        <SectionBar title="Expense (Debit)" totalMinor={dayTotals.expenseMinor} />
+        {/* Expense Section */}
+        <SectionBar title="Expense" totalMinor={dayTotals.expenseMinor} />
         {expenseTx.length === 0 ? (
           <div
             style={{

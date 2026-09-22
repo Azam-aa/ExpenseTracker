@@ -38,6 +38,7 @@ export async function exportAccountStatementExcel(
     let runningBalance = (options.openingBalanceMinor || 0) / 100;
     let totalCredit = 0;
     let totalDebit = 0;
+    let totalAttachments = 0;
 
     const statementRows: any[] = [];
     const monthlyGroups = new Map<string, {
@@ -50,7 +51,7 @@ export async function exportAccountStatementExcel(
     }>();
 
     for (const tx of activeTx) {
-      const catName = (tx.categoryId && categoryMap.get(tx.categoryId)) || 'Uncategorized';
+      const catName = (tx.categoryId && categoryMap.get(tx.categoryId)) || '-';
       const amount = tx.amountMinor / 100;
       const isIncome = tx.type === 'INCOME';
 
@@ -63,41 +64,26 @@ export async function exportAccountStatementExcel(
       }
 
       // Format month key "YYYY-MM" and nice month name "Sep 2026"
-      const dateParts = tx.date.split('-');
-      const year = dateParts[0] || '';
-      const monthNum = parseInt(dateParts[1] || '1', 10);
-      const monthNames = [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-      ];
-      const monthStr = monthNames[monthNum - 1] || '';
-      const monthKey = `${year}-${(dateParts[1] || '01').padStart(2, '0')}`;
-      const monthDisplay = `${monthStr} ${year}`;
+      // Track attachments
+      const imgRec = tx.imageId && options.imageRecords ? options.imageRecords[tx.imageId] : undefined;
+      const attachmentType = imgRec ? imgRec.fileType?.toUpperCase() || 'IMAGE' : tx.imageId ? 'IMAGE' : 'None';
+      const attachmentName = imgRec?.originalName || (tx.imageId ? 'Attached receipt' : '-');
+      if (tx.imageId) totalAttachments++;
 
-      // Attachment details
-      let attachmentType = 'None';
-      let attachmentName = '';
-      if (tx.imageId) {
-        const rec = options.imageRecords ? options.imageRecords[tx.imageId] : null;
-        if (rec) {
-          attachmentType = (rec.fileType || 'Image').toUpperCase();
-          attachmentName = rec.originalName || rec.fileName || tx.imageId;
-        } else {
-          attachmentType = 'Attached';
-          attachmentName = tx.imageId;
-        }
-      }
+      const [y, m] = tx.date.split('-');
+      const monthDisplay = `${y}-${m}`;
+      const monthKey = monthDisplay;
 
       statementRows.push({
         'Date': tx.date,
         'Time': tx.time || '12:00',
         'Month': monthDisplay,
-        'Type': isIncome ? 'Income (Credit)' : 'Expense (Debit)',
+        'Type': isIncome ? 'Income' : 'Expense',
         'Particulars': tx.title || 'Untitled',
         'Category': catName,
         'Description': tx.description || '',
-        'Debit / Expense (INR)': isIncome ? '' : Number(amount.toFixed(2)),
-        'Credit / Income (INR)': isIncome ? Number(amount.toFixed(2)) : '',
+        'Expense (INR)': isIncome ? '' : Number(amount.toFixed(2)),
+        'Income (INR)': isIncome ? Number(amount.toFixed(2)) : '',
         'Running Balance (INR)': Number(runningBalance.toFixed(2)),
         'Attachment Type': attachmentType,
         'Attachment File': attachmentName
@@ -130,8 +116,8 @@ export async function exportAccountStatementExcel(
       'Particulars': `Total Transactions: ${activeTx.length}`,
       'Category': '',
       'Description': '',
-      'Debit / Expense (INR)': Number(totalDebit.toFixed(2)),
-      'Credit / Income (INR)': Number(totalCredit.toFixed(2)),
+      'Expense (INR)': Number(totalDebit.toFixed(2)),
+      'Income (INR)': Number(totalCredit.toFixed(2)),
       'Running Balance (INR)': Number((totalCredit - totalDebit).toFixed(2)),
       'Attachment Type': '',
       'Attachment File': ''
@@ -200,7 +186,7 @@ export async function exportAccountStatementExcel(
       const g = monthlyGroups.get(mKey)!;
       let monthRunning = 0;
       const mRows = g.txs.map((tx) => {
-        const catName = (tx.categoryId && categoryMap.get(tx.categoryId)) || 'Uncategorized';
+        const catName = (tx.categoryId && categoryMap.get(tx.categoryId)) || '-';
         const amount = tx.amountMinor / 100;
         const isIncome = tx.type === 'INCOME';
         if (isIncome) monthRunning += amount;
@@ -213,8 +199,8 @@ export async function exportAccountStatementExcel(
           'Particulars': tx.title || 'Untitled',
           'Category': catName,
           'Description': tx.description || '',
-          'Debit (INR)': isIncome ? '' : Number(amount.toFixed(2)),
-          'Credit (INR)': isIncome ? Number(amount.toFixed(2)) : '',
+          'Expense (INR)': isIncome ? '' : Number(amount.toFixed(2)),
+          'Income (INR)': isIncome ? Number(amount.toFixed(2)) : '',
           'Month Balance': Number(monthRunning.toFixed(2)),
           'Has Attachment': tx.imageId ? 'Yes' : 'No'
         };
@@ -228,8 +214,8 @@ export async function exportAccountStatementExcel(
         'Particulars': `Transactions: ${g.txs.length}`,
         'Category': '',
         'Description': '',
-        'Debit (INR)': Number(g.totalDebit.toFixed(2)),
-        'Credit (INR)': Number(g.totalCredit.toFixed(2)),
+        'Expense (INR)': Number(g.totalDebit.toFixed(2)),
+        'Income (INR)': Number(g.totalCredit.toFixed(2)),
         'Month Balance': Number((g.totalCredit - g.totalDebit).toFixed(2)),
         'Has Attachment': `${g.attachmentCount} files`
       });
@@ -321,7 +307,7 @@ export async function exportToCsv(
           escape(tx.title),
           (tx.amountMinor / 100).toFixed(2),
           escape(tx.description),
-          escape(cat ? cat.name : 'Uncategorized'),
+          escape(cat ? cat.name : '-'),
           tx.imageId ? 'Yes' : 'No'
         ].join(',')
       );

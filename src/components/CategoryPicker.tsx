@@ -14,7 +14,6 @@ import {
   MdWork,
   MdReplay,
   MdCardGiftcard,
-  MdCategory,
   MdClose
 } from 'react-icons/md';
 
@@ -107,49 +106,6 @@ export const CategoryPicker: React.FC<CategoryPickerProps> = ({
             paddingBottom: '8px'
           }}
         >
-          {/* Uncategorized Option */}
-          <div
-            onClick={() => onSelect(null)}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              cursor: 'pointer',
-              padding: '8px 4px',
-              borderRadius: '10px',
-              backgroundColor:
-                selectedCategoryId === null ? 'rgba(255, 255, 255, 0.12)' : 'transparent'
-            }}
-          >
-            <div
-              style={{
-                width: '46px',
-                height: '46px',
-                borderRadius: '50%',
-                backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--color-text)',
-                marginBottom: '6px'
-              }}
-            >
-              <MdCategory size={22} />
-            </div>
-            <span
-              style={{
-                fontSize: '12px',
-                color: 'var(--color-text)',
-                textAlign: 'center',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                maxWidth: '100%'
-              }}
-            >
-              None
-            </span>
-          </div>
 
           {filteredCategories.map((cat) => {
             const isSelected = selectedCategoryId === cat.id;

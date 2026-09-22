@@ -128,7 +128,7 @@ export const MonthlyScreen: React.FC = () => {
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <div>
               <div style={{ fontSize: '13px', color: 'var(--color-text)' }}>
-                Total Income (Credit)
+                Total Income
               </div>
               <div
                 style={{
@@ -144,7 +144,7 @@ export const MonthlyScreen: React.FC = () => {
 
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '13px', color: 'var(--color-text)' }}>
-                Total Expense (Debit)
+                Total Expense
               </div>
               <div
                 style={{
@@ -241,7 +241,7 @@ export const MonthlyScreen: React.FC = () => {
                     {dateInfo.dayCardTitle}
                   </div>
 
-                  {/* Two Columns: Income (Credit) | Expense (Debit) */}
+                  {/* Two Columns: Income | Expense */}
                   <div style={{ display: 'flex', gap: '16px' }}>
                     {/* Income Column */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -254,7 +254,7 @@ export const MonthlyScreen: React.FC = () => {
                           marginBottom: '8px'
                         }}
                       >
-                        Income (Credit)
+                        Income
                       </div>
 
                       {dayIncomeTx.map((tx) => (
@@ -315,7 +315,7 @@ export const MonthlyScreen: React.FC = () => {
                           marginBottom: '8px'
                         }}
                       >
-                        Expense (Debit)
+                        Expense
                       </div>
 
                       {dayExpenseTx.map((tx) => (

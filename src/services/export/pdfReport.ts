@@ -54,7 +54,7 @@ export async function generateMonthlyPdf(
       return [
         tx.date,
         tx.title || 'Untitled',
-        cat ? cat.name : 'Uncategorized',
+        cat ? cat.name : '-',
         tx.type === 'INCOME' ? formatIndianNumber(tx.amountMinor) : '-',
         tx.type === 'EXPENSE' ? formatIndianNumber(tx.amountMinor) : '-',
         formatIndianNumber(runningBalance)

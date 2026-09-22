@@ -5,27 +5,25 @@ import {
   MdCameraAlt,
   MdPhotoLibrary,
   MdPictureAsPdf,
-  MdTableChart,
-  MdInsertDriveFile,
   MdClose
 } from 'react-icons/md';
 
 export interface AttachmentPickerProps {
   onFilePicked: (file: File | Blob, originalName: string) => void;
+  onMultiplePicked?: (files: Array<{ blob: Blob; name: string }>) => void;
   onImagePicked?: (blob: Blob) => void;
   onClose: () => void;
 }
 
 export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
   onFilePicked,
+  onMultiplePicked,
   onImagePicked,
   onClose
 }) => {
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const pdfInputRef = useRef<HTMLInputElement | null>(null);
-  const excelInputRef = useRef<HTMLInputElement | null>(null);
-  const anyFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const deliverFile = (blob: Blob, name: string) => {
     if (onFilePicked) {
@@ -92,8 +90,18 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (files.length > 1 && onMultiplePicked) {
+      const arr: Array<{ blob: Blob; name: string }> = [];
+      for (let i = 0; i < files.length; i++) {
+        arr.push({ blob: files[i], name: files[i].name });
+      }
+      onMultiplePicked(arr);
+      onClose();
+    } else {
+      const file = files[0];
       deliverFile(file, file.name);
     }
     e.target.value = '';
@@ -112,7 +120,7 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
       }}
       onClick={onClose}
     >
-      {/* Hidden file inputs for distinct file filters */}
+      {/* Hidden file inputs with multiple support */}
       <input
         type="file"
         ref={cameraInputRef}
@@ -126,6 +134,7 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
         type="file"
         ref={galleryInputRef}
         accept="image/*"
+        multiple
         data-testid="gallery-input"
         style={{ display: 'none' }}
         onChange={handleInputChange}
@@ -134,23 +143,8 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
         type="file"
         ref={pdfInputRef}
         accept="application/pdf,.pdf"
+        multiple
         data-testid="pdf-input"
-        style={{ display: 'none' }}
-        onChange={handleInputChange}
-      />
-      <input
-        type="file"
-        ref={excelInputRef}
-        accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-        data-testid="excel-input"
-        style={{ display: 'none' }}
-        onChange={handleInputChange}
-      />
-      <input
-        type="file"
-        ref={anyFileInputRef}
-        accept="*/*"
-        data-testid="any-file-input"
         style={{ display: 'none' }}
         onChange={handleInputChange}
       />
@@ -170,7 +164,7 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
         }}
       >
         <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-text)', padding: '0 8px 6px 8px' }}>
-          Attach Receipt or Document
+          Attach Receipt or Photo
         </div>
 
         {/* 1. Camera */}
@@ -192,7 +186,7 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
           Take Photo (Camera)
         </button>
 
-        {/* 2. Gallery */}
+        {/* 2. Gallery (Multi-photo supported) */}
         <button
           onClick={handleChooseGallery}
           style={{
@@ -208,7 +202,7 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
           }}
         >
           <MdPhotoLibrary size={24} color="#64b5f6" />
-          Choose Photo from Gallery
+          Choose Photos from Gallery
         </button>
 
         {/* 3. PDF Document */}
@@ -228,44 +222,6 @@ export const PhotoPicker: React.FC<AttachmentPickerProps> = ({
         >
           <MdPictureAsPdf size={24} color="#e57373" />
           Attach PDF Document (.pdf)
-        </button>
-
-        {/* 4. Excel / Spreadsheet */}
-        <button
-          onClick={() => excelInputRef.current?.click()}
-          style={{
-            height: '52px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            padding: '0 16px',
-            fontSize: '15px',
-            color: 'var(--color-text)',
-            borderRadius: '12px',
-            backgroundColor: 'rgba(255, 255, 255, 0.05)'
-          }}
-        >
-          <MdTableChart size={24} color="#81c784" />
-          Attach Excel / Spreadsheet (.xlsx, .csv)
-        </button>
-
-        {/* 5. Any Document */}
-        <button
-          onClick={() => anyFileInputRef.current?.click()}
-          style={{
-            height: '52px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            padding: '0 16px',
-            fontSize: '15px',
-            color: 'var(--color-text)',
-            borderRadius: '12px',
-            backgroundColor: 'rgba(255, 255, 255, 0.05)'
-          }}
-        >
-          <MdInsertDriveFile size={24} color="#ba68c8" />
-          Attach Any Document / File
         </button>
 
         <button

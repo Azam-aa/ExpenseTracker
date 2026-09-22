@@ -21,10 +21,10 @@ test.describe('Day to Day Expenses - Parity & End-to-End Test Suite', () => {
     await expect(page.locator('button[aria-label="Monthly"]')).toBeVisible();
     await expect(page.locator('button[aria-label="Yearly"]')).toBeVisible();
 
-    // Verify Date card & Balance summary headers
+    // Verify Date card & Balance summary headers (Clean terms Income and Expense)
     await expect(page.locator('text=C/F').first()).toBeVisible();
-    await expect(page.locator('text=Income (Credit)').first()).toBeVisible();
-    await expect(page.locator('text=Expense (Debit)').first()).toBeVisible();
+    await expect(page.locator('text=Income').first()).toBeVisible();
+    await expect(page.locator('text=Expense').first()).toBeVisible();
     await expect(page.locator('text=Balance').first()).toBeVisible();
 
     // Verify FAB
@@ -45,8 +45,8 @@ test.describe('Day to Day Expenses - Parity & End-to-End Test Suite', () => {
 
     // Yearly tab
     await page.click('button[aria-label="Yearly"]');
-    await expect(page.locator('text=Income (Credit)').first()).toBeVisible();
-    await expect(page.locator('text=Expense (Debit)').first()).toBeVisible();
+    await expect(page.locator('text=Income').first()).toBeVisible();
+    await expect(page.locator('text=Expense').first()).toBeVisible();
     await expect(page.locator('text=Balance').first()).toBeVisible();
     await page.screenshot({ path: 'tests/screenshots/03-yearly-tab.png' });
 
@@ -60,8 +60,8 @@ test.describe('Day to Day Expenses - Parity & End-to-End Test Suite', () => {
     await page.click('button:has-text("Charts")');
     await expect(page.locator('text=Charts').first()).toBeVisible();
     await expect(page.locator('button:has-text("All time")')).toBeVisible();
-    await expect(page.locator('button:has-text("Income (Credit)")')).toBeVisible();
-    await expect(page.locator('button:has-text("Expense (Debit)")')).toBeVisible();
+    await expect(page.locator('button:has-text("Income")').first()).toBeVisible();
+    await expect(page.locator('button:has-text("Expense")').first()).toBeVisible();
     await page.screenshot({ path: 'tests/screenshots/05-charts-tab.png' });
   });
 
@@ -167,12 +167,15 @@ test.describe('Day to Day Expenses - Parity & End-to-End Test Suite', () => {
     await page.screenshot({ path: 'tests/screenshots/10-check-data-screen.png' });
   });
 
-  test('6. Account Statement Excel download & Universal Attachment flow', async ({ page }) => {
+  test('6. Account Statement Excel download & Category Disabled from Entry', async ({ page }) => {
     await page.goto('/');
 
-    // Verify Add Sheet has Attachment row above Description row
+    // Verify Category button is disabled/removed from Add Sheet
     await page.click('button[aria-label="Add transaction"]');
-    await expect(page.locator('text=Add Attachment (Photo, PDF, Excel)')).toBeVisible();
+    await expect(page.locator('button[aria-label="Select category"]')).not.toBeVisible();
+
+    // Verify Add Sheet has Attachment row above Description row
+    await expect(page.locator('text=Attach Photo or Document')).toBeVisible();
     await expect(page.locator('input[placeholder="Description"]')).toBeVisible();
 
     // Close Add Sheet
@@ -197,48 +200,72 @@ test.describe('Day to Day Expenses - Parity & End-to-End Test Suite', () => {
     await expect(page.locator('text=Generating Account Statement (Excel)...')).toBeVisible();
   });
 
-  test('7. Universal Attachment (Photo & PDF) full save, view, and edit lifecycle', async ({ page }) => {
+  test('7. Multiple Attachments: Add photos, view document button, attachment symbol beside amount', async ({ page }) => {
     await page.goto('/');
 
-    // 1. Add transaction with photo
+    // 1. Add transaction with 2 photos
     await page.click('button[aria-label="Add transaction"]');
     await page.fill('input[placeholder="Amount"]', '850');
     await page.fill('input[placeholder="Enter Text"]', 'Office Supplies Receipt');
 
-    const dummyPng = Buffer.from(
+    const dummyPng1 = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
       'base64'
     );
+    const dummyPng2 = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAADUlEQVR42mNkYPj/HwADBwGAqoxcWAAAAABJRU5ErkJggg==',
+      'base64'
+    );
 
-    await page.click('text=Add Attachment (Photo, PDF, Excel)');
+    await page.click('text=Attach Photo or Document');
     const fileInput = page.locator('input[data-testid="gallery-input"]');
-    await fileInput.setInputFiles({
-      name: 'office_receipt.png',
-      mimeType: 'image/png',
-      buffer: dummyPng
-    });
+    await fileInput.setInputFiles([
+      {
+        name: 'office_receipt_1.png',
+        mimeType: 'image/png',
+        buffer: dummyPng1
+      },
+      {
+        name: 'office_receipt_2.png',
+        mimeType: 'image/png',
+        buffer: dummyPng2
+      }
+    ]);
 
-    await expect(page.locator('text=Tap to view full screen')).toBeVisible({ timeout: 5000 });
+    // Check that multi-attachment strip renders View Document and Add More buttons
+    await expect(page.locator('text=View Document (2)')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=Add More')).toBeVisible();
     await page.click('button[aria-label="Save transaction"]');
 
-    // 2. Verify on Daily screen
+    // 2. Verify on Daily screen: title, attachment symbol beside amount, and inline thumbnails
     await expect(page.locator('text=Office Supplies Receipt')).toBeVisible({ timeout: 5000 });
-    const viewBtn = page.locator('button[aria-label="View attachment"]');
-    await expect(viewBtn).toBeVisible();
+    const attachBtn = page.locator('button[aria-label="View attachment"]');
+    await expect(attachBtn).toBeVisible();
+    const thumb1 = page.locator('div[aria-label="View attachment 1"]');
+    const thumb2 = page.locator('div[aria-label="View attachment 2"]');
+    await expect(thumb1).toBeVisible();
+    await expect(thumb2).toBeVisible();
 
-    // 3. Open full screen viewer
-    await viewBtn.click();
+    // 3. Tap attachment symbol button beside amount to open full screen viewer
+    await attachBtn.click();
     await expect(page.locator('button[aria-label="Back"]')).toBeVisible({ timeout: 5000 });
+    // Verify multi-attachment navigation indicator/buttons
+    await expect(page.locator('text=(1/2)')).toBeVisible();
+    await expect(page.locator('button[aria-label="Next attachment"]')).toBeVisible();
+
+    // Tap Next
+    await page.click('button[aria-label="Next attachment"]');
+    await expect(page.locator('text=(2/2)')).toBeVisible();
+
+    // Close viewer
     await page.click('button[aria-label="Back"]');
 
-    // 4. Open edit sheet and verify preview card with Change & Remove buttons
+    // 4. Open edit sheet by tapping row text
     await page.click('text=Office Supplies Receipt');
-    await expect(page.locator('text=Tap to view full screen')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('text=Change')).toBeVisible();
-    await expect(page.locator('text=Remove')).toBeVisible();
+    await expect(page.locator('text=View Document (2)')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=Add More')).toBeVisible();
 
     await page.click('button[aria-label="Save transaction"]');
-    await expect(viewBtn).toBeVisible({ timeout: 5000 });
+    await expect(attachBtn).toBeVisible({ timeout: 5000 });
   });
 });
-

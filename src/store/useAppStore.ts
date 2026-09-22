@@ -7,7 +7,8 @@ import {
   TabType,
   ScreenId,
   ImageRecord,
-  FullBackupPayload
+  FullBackupPayload,
+  getTransactionAttachmentIds
 } from '../models/types';
 import {
   loadMetaShard,
@@ -48,7 +49,13 @@ interface AppState {
   activeDialog: 'NONE' | 'DATE_PICKER' | 'CONFIRM_DELETE' | 'RESET_APP' | 'CONFIRM_RESTORE';
   editingTransaction: Transaction | null;
   detailsTransaction: Transaction | null;
-  viewerImage: { url: string; transaction: Transaction; imageRecord?: ImageRecord } | null;
+  viewerImage: {
+    url: string;
+    transaction: Transaction;
+    imageRecord?: ImageRecord;
+    initialIndex?: number;
+    allAttachmentIds?: string[];
+  } | null;
   isMenuOpen: boolean;
   toastMessage: string | null;
   undoTx: { transaction: Transaction; timeoutId: number } | null;
@@ -56,8 +63,8 @@ interface AppState {
 
   // Actions
   initStore: () => Promise<void>;
-  addTransaction: (tx: Transaction, img?: ImageRecord) => void;
-  updateTransaction: (tx: Transaction, img?: ImageRecord) => void;
+  addTransaction: (tx: Transaction, img?: ImageRecord | ImageRecord[]) => void;
+  updateTransaction: (tx: Transaction, img?: ImageRecord | ImageRecord[]) => void;
   deleteTransaction: (id: string) => void;
   undoDeleteTransaction: () => void;
   permanentlyDeleteTransaction: (id: string) => void;
@@ -89,7 +96,13 @@ interface AppState {
   closeSheet: () => void;
   openMenu: () => void;
   closeMenu: () => void;
-  openViewer: (url: string, tx: Transaction, img?: ImageRecord) => void;
+  openViewer: (
+    url: string,
+    tx: Transaction,
+    img?: ImageRecord,
+    initialIndex?: number,
+    allAttachmentIds?: string[]
+  ) => void;
   closeViewer: () => void;
   showToast: (msg: string) => void;
 
@@ -222,7 +235,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const updatedRecords = { ...state.imageRecords };
       if (img) {
-        updatedRecords[img.id] = img;
+        if (Array.isArray(img)) {
+          img.forEach((r) => {
+            if (r && r.id) updatedRecords[r.id] = r;
+          });
+        } else if (img.id) {
+          updatedRecords[img.id] = img;
+        }
       }
 
       return {
@@ -255,7 +274,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const updatedRecords = { ...state.imageRecords };
       if (img) {
-        updatedRecords[img.id] = img;
+        if (Array.isArray(img)) {
+          img.forEach((r) => {
+            if (r && r.id) updatedRecords[r.id] = r;
+          });
+        } else if (img.id) {
+          updatedRecords[img.id] = img;
+        }
       }
 
       return {
@@ -509,7 +534,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   closeSheet: () => set({ activeSheet: 'NONE', editingTransaction: null }),
   openMenu: () => set({ isMenuOpen: true }),
   closeMenu: () => set({ isMenuOpen: false }),
-  openViewer: (url, tx, img) => set({ viewerImage: { url, transaction: tx, imageRecord: img } }),
+  openViewer: (url, tx, img, initialIndex = 0, allAttachmentIds) =>
+    set({
+      viewerImage: {
+        url,
+        transaction: tx,
+        imageRecord: img,
+        initialIndex,
+        allAttachmentIds: allAttachmentIds || getTransactionAttachmentIds(tx)
+      }
+    }),
   closeViewer: () => set({ viewerImage: null }),
   showToast: (msg) => {
     set({ toastMessage: msg });

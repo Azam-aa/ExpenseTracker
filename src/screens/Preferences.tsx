@@ -109,7 +109,7 @@ export const PreferencesScreen: React.FC = () => {
                 fontWeight: 500
               }}
             >
-              Expense (Debit)
+              Expense
             </button>
             <button
               onClick={() => handleDefaultTypeChange('INCOME')}
@@ -124,7 +124,7 @@ export const PreferencesScreen: React.FC = () => {
                 fontWeight: 500
               }}
             >
-              Income (Credit)
+              Income
             </button>
           </div>
         </div>

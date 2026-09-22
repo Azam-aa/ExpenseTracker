@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Transaction, ImageRecord } from '../models/types';
+import { Transaction, ImageRecord, getTransactionAttachmentIds } from '../models/types';
 import { formatMoney } from '../utils/money';
 import {
   MdArrowBack,
   MdDelete,
   MdAttachFile,
   MdOpenInNew,
-  MdShare
+  MdShare,
+  MdChevronLeft,
+  MdChevronRight
 } from 'react-icons/md';
 import { PhotoPicker } from './PhotoPicker';
 import { processAttachmentBytes, blobToBase64 } from '../services/images/processor';
@@ -21,6 +23,8 @@ interface ImageViewerProps {
   imageUrl: string;
   transaction: Transaction;
   imageRecord?: ImageRecord | null;
+  initialIndex?: number;
+  allAttachmentIds?: string[];
   onClose: () => void;
 }
 
@@ -28,6 +32,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   imageUrl,
   transaction,
   imageRecord,
+  initialIndex = 0,
+  allAttachmentIds,
   onClose
 }) => {
   const { updateTransaction, showToast } = useAppStore();
@@ -35,23 +41,41 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   const [showPicker, setShowPicker] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
 
+  // Determine list of attachment IDs
+  const rawIds = allAttachmentIds && allAttachmentIds.length > 0
+    ? allAttachmentIds
+    : getTransactionAttachmentIds(transaction);
+  const [attachmentIds, setAttachmentIds] = useState<string[]>(rawIds);
+  const [currentIndex, setCurrentIndex] = useState<number>(() => {
+    if (initialIndex >= 0 && initialIndex < rawIds.length) return initialIndex;
+    return 0;
+  });
+
+  const currentId = attachmentIds[currentIndex] || transaction.imageId || null;
+
   const [record, setRecord] = useState<ImageRecord | null>(imageRecord || null);
   const [fullBlob, setFullBlob] = useState<Blob | null>(null);
   const [blobUrl, setBlobUrl] = useState<string>(imageUrl);
   const [excelRows, setExcelRows] = useState<any[][] | null>(null);
 
+  // Load active attachment whenever currentId changes
   useEffect(() => {
     let active = true;
     let createdUrl: string | null = null;
+    setScale(1);
 
-    if (transaction.imageId) {
-      getImageFromIdb(transaction.imageId).then(async (entry) => {
+    if (currentId) {
+      getImageFromIdb(currentId).then(async (entry) => {
         if (!active || !entry) return;
         setRecord(entry.record);
         setFullBlob(entry.blob);
 
-        createdUrl = URL.createObjectURL(entry.blob);
-        setBlobUrl(createdUrl);
+        if (entry.dataUrl) {
+          setBlobUrl(entry.dataUrl);
+        } else if (entry.blob) {
+          createdUrl = URL.createObjectURL(entry.blob);
+          setBlobUrl(createdUrl);
+        }
 
         const isExcel =
           entry.record.fileType === 'excel' ||
@@ -79,20 +103,47 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
       active = false;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [transaction.imageId]);
+  }, [currentId]);
 
   const handleDoubleTap = () => {
     setScale((prev) => (prev > 1.2 ? 1 : 2.2));
   };
 
+  const handlePrev = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex((prev) => prev - 1);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentIndex < attachmentIds.length - 1) {
+      setCurrentIndex((prev) => prev + 1);
+    }
+  };
+
   const handleRemoveImage = () => {
+    if (!currentId) {
+      onClose();
+      return;
+    }
+    const nextIds = attachmentIds.filter((id) => id !== currentId);
+    setAttachmentIds(nextIds);
+    const nextPrimaryId = nextIds.length > 0 ? nextIds[0] : null;
+
     updateTransaction({
       ...transaction,
-      imageId: null,
+      imageId: nextPrimaryId,
+      attachmentIds: nextIds,
       updatedAt: Date.now()
     });
+
     showToast('Attachment removed');
-    onClose();
+    if (nextIds.length === 0) {
+      onClose();
+    } else {
+      setShowRemoveConfirm(false);
+      setCurrentIndex((prev) => Math.min(prev, nextIds.length - 1));
+    }
   };
 
   const handleReplaceAttachment = async (fileOrBlob: Blob, originalName?: string) => {
@@ -104,16 +155,26 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         amountMinor: transaction.amountMinor,
         title: transaction.title || 'attachment'
       });
+
+      const nextIds = [...attachmentIds];
+      if (currentIndex >= 0 && currentIndex < nextIds.length) {
+        nextIds[currentIndex] = res.record.id;
+      } else {
+        nextIds.push(res.record.id);
+      }
+      setAttachmentIds(nextIds);
+
       updateTransaction(
         {
           ...transaction,
-          imageId: res.record.id,
+          imageId: nextIds[0],
+          attachmentIds: nextIds,
           updatedAt: Date.now()
         },
         res.record
       );
       showToast('Attachment replaced');
-      onClose();
+      setShowPicker(false);
     } catch {
       showToast('Could not replace attachment');
     }
@@ -121,13 +182,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
   const handleOpenWithApp = async () => {
     if (!fullBlob) {
-      // Fallback to blobUrl
       window.open(blobUrl, '_blank');
       return;
     }
 
     try {
-      const ext = record?.fileType === 'pdf' ? 'pdf' : record?.fileType === 'excel' ? 'xlsx' : 'bin';
+      const ext = record?.fileType === 'pdf' ? 'pdf' : record?.fileType === 'excel' ? 'xlsx' : 'jpg';
       const cleanName = record?.fileName || `attachment_${transaction.id}.${ext}`;
 
       if (Capacitor.isNativePlatform()) {
@@ -189,7 +249,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0 12px',
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          backgroundColor: 'rgba(0, 0, 0, 0.65)',
           borderBottom: '1px solid var(--color-outline)',
           flexShrink: 0
         }}
@@ -205,6 +265,11 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: '15px', fontWeight: 500, color: 'var(--color-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {record?.originalName || transaction.title || 'Attachment'}
+              {attachmentIds.length > 1 && (
+                <span style={{ fontSize: '12px', color: 'var(--color-primary)', marginLeft: '6px' }}>
+                  ({currentIndex + 1}/{attachmentIds.length})
+                </span>
+              )}
             </div>
             <div style={{ fontSize: '12px', color: isIncome ? 'var(--color-income)' : 'var(--color-expense)' }}>
               {formatMoney(transaction.amountMinor)} &nbsp;•&nbsp; {transaction.date}
@@ -351,6 +416,62 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             />
           </div>
         )}
+
+        {/* Previous Navigation Arrow (Multi-attachment) */}
+        {currentIndex > 0 && (
+          <button
+            onClick={handlePrev}
+            aria-label="Previous attachment"
+            style={{
+              position: 'absolute',
+              left: '14px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(0, 0, 0, 0.65)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
+              zIndex: 10
+            }}
+          >
+            <MdChevronLeft size={30} />
+          </button>
+        )}
+
+        {/* Next Navigation Arrow (Multi-attachment) */}
+        {currentIndex < attachmentIds.length - 1 && (
+          <button
+            onClick={handleNext}
+            aria-label="Next attachment"
+            style={{
+              position: 'absolute',
+              right: '14px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(0, 0, 0, 0.65)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
+              zIndex: 10
+            }}
+          >
+            <MdChevronRight size={30} />
+          </button>
+        )}
       </div>
 
       {/* Details Footer Overlay */}
@@ -405,7 +526,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               Remove this attachment?
             </div>
             <div style={{ fontSize: '14px', color: 'var(--color-text-dim)', marginBottom: '20px' }}>
-              The attached file will be detached from this transaction.
+              {attachmentIds.length > 1
+                ? `Attachment ${currentIndex + 1} of ${attachmentIds.length} will be detached from this transaction.`
+                : 'The attached file will be detached from this transaction.'}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
               <button

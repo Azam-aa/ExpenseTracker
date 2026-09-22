@@ -97,8 +97,8 @@ export const YearlyScreen: React.FC = () => {
             }}
           >
             <span />
-            <span style={{ textAlign: 'right' }}>Income (Credit)</span>
-            <span style={{ textAlign: 'right' }}>Expense (Debit)</span>
+            <span style={{ textAlign: 'right' }}>Income</span>
+            <span style={{ textAlign: 'right' }}>Expense</span>
             <span style={{ textAlign: 'right' }}>Balance</span>
           </div>
 
